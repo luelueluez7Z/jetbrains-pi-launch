@@ -84,7 +84,7 @@ The plugin communicates with the pi RPC backend over a JSONL bridge: the Kotlin 
 
 ## Acknowledgements
 
-- Built on the open-source [jetbrains-cc-gui](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui) (MIT), whose input-box and streaming UI this project is based on.
+- This project's UI is heavily inspired by and adapted from the open-source [jetbrains-cc-gui](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui) (MIT) — the input-box, streaming message rendering, and completion UI are based on it.
 - The [pi](https://pi.dev) coding agent by Earendil Works.
 
 ---
