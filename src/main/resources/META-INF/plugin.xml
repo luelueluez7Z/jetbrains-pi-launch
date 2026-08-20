@@ -1,0 +1,23 @@
+<idea-plugin>
+    <id>com.ruigu.pichat</id>
+    <name>Pi Chat</name>
+    <version>0.1.0</version>
+    <vendor email="dev@ruigu.local" url="https://ruigushop.com">RuiGu</vendor>
+
+    <description><![CDATA[
+      Pi Chat — 在 IDEA 中接入本地 <a href="https://pi.dev">pi</a> coding agent（共享本地 pi 会话）。
+      <br/>
+      后端通过 <code>pi --mode rpc</code> 子进程实现，会话文件与终端 pi 共用
+      （<code>~/.pi/agent/sessions/</code>），在同一项目目录下自动继续最近的 pi 会话，
+      实现终端与 IDEA 之间的无缝切换。
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.jcef</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Pi Chat" anchor="right" icon="/icons/pi.svg"
+                    factoryClass="com.ruigu.pichat.ui.PiToolWindowFactory"/>
+        <notificationGroup id="Pi Chat" displayType="BALLOON"/>
+    </extensions>
+</idea-plugin>

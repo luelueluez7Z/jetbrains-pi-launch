@@ -1,0 +1,18 @@
+.gradle/
+build/
+.intellijPlatform/
+.idea/
+*.iml
+.DS_Store
+
+# 本地日志与启动脚本
+runide.out.log
+runide.err.log
+start-ide.cmd
+runide-local.bat
+
+# webview 构建产物与本地文件
+webview/node_modules/
+webview/dist/
+webview/src.bak-20260820/
+webview/*.local
