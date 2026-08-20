@@ -65,7 +65,6 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefJSQuery
@@ -102,8 +101,6 @@ import javax.swing.JPanel
  * 所有 Compose 状态只在 EDT 上修改（PiListener 回调经 invokeLater 转发）。
  */
 class ChatPanel(private val project: Project) : Disposable, PiListener {
-
-    private val LOG = Logger.getInstance(ChatPanel::class.java)
 
     private data class ModelItem(val provider: String, val id: String, val name: String, val contextWindow: Long = 0)
     private data class SessionItem(val path: String, val name: String, val isCurrent: Boolean, val title: String? = null)
@@ -339,7 +336,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             "create_new_session" -> confirmNewSession()
             "set_model" -> {
                 val found = findModel(content)
-                LOG.warn("[PiChatDiag] set_model content='$content' found=${found?.let { "${it.provider}/${it.id}" } ?: "NULL"} models=${models.size}")
                 found?.let { selectModel(it) }
             }
             "set_reasoning_effort" -> if (thinkingLevels.contains(content)) selectThinking(content)
@@ -830,7 +826,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     statusTip.value = (if (sessionFile.isNotEmpty()) "会话文件: $sessionFile\n" else "") + "工作目录: ${client.cwd}"
                     if (d.has("model") && d.get("model").isJsonObject) {
                         val m = d.getAsJsonObject("model")
-                        LOG.warn("[PiChatDiag] refreshStatus state.model=${m.str("provider")}/${m.str("id")} currentModel=${currentModel.value?.let { "${it.provider}/${it.id}" } ?: "null"}")
                         syncModelSelection(m.str("provider"), m.str("id"))
                     }
                     if (d.has("thinkingLevel")) {
@@ -909,12 +904,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             onEdt {
                 if (res != null && res.success()) {
                     currentModel.value = item
-                    LOG.warn("[PiChatDiag] selectModel OK -> ${item.provider}/${item.id}")
                     if (!sameModel) addSystem("已切换模型: ${item.name}")
                     loadThinkingLevels("")
                     publishContextPresets()
                 } else {
-                    LOG.warn("[PiChatDiag] selectModel FAIL ${item.provider}/${item.id} err=${res?.error() ?: "无响应"}")
                     addSystem("切换模型失败: " + (res?.error() ?: "无响应"))
                 }
             }
@@ -927,10 +920,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             onEdt {
                 if (res != null && res.success()) {
                     currentThinking.value = level
-                    LOG.warn("[PiChatDiag] selectThinking OK level=$level")
                     addSystem("已切换思考强度: $level")
                 } else {
-                    LOG.warn("[PiChatDiag] selectThinking FAIL level=$level err=${res?.error() ?: "无响应"}")
                     addSystem("切换思考强度失败: " + (res?.error() ?: "无响应"))
                 }
             }
