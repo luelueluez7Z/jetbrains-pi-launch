@@ -19,7 +19,7 @@ const VIEWPORT_HEIGHT_FALLBACK_PX = 800;
 const MAX_WRAPPER_HEIGHT_VIEWPORT_RATIO = 0.55;
 const MAX_WRAPPER_HEIGHT_CAP_PX = 520;
 const MIN_MAX_WRAPPER_HEIGHT_PX = 140;
-const DEFAULT_MIN_WRAPPER_HEIGHT_PX = 48;
+const DEFAULT_MIN_WRAPPER_HEIGHT_PX = 30;
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));

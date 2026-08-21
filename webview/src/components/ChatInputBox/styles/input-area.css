@@ -11,17 +11,17 @@
 
 /* Pi's compact TUI-style telemetry line sits directly above the composer. */
 .pi-status-bar {
-  min-height: 26px;
+  min-height: 32px;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   padding: 0 12px;
   color: var(--text-muted);
   background: color-mix(in srgb, var(--input-bg) 88%, transparent);
   border-top: 1px solid color-mix(in srgb, var(--input-border) 70%, transparent);
   font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
-  font-size: 12px;
-  line-height: 26px;
+  font-size: 14px;
+  line-height: 32px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -53,9 +53,33 @@
 }
 
 .pi-status-bar-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
   font-weight: 500;
+  min-width: 0;
+}
+
+/* 状态主文本 —— 随状态变色（与左侧图标一致） */
+.pi-status-phase.pi-status-phase-busy {
+  color: var(--accent, #4b8bf5);
+}
+.pi-status-phase.pi-status-phase-idle {
+  color: #55d5ad;
+}
+.pi-status-phase.pi-status-phase-disconnected {
+  color: #ef6a6a;
+}
+.pi-status-phase.pi-status-phase-ready {
+  color: var(--text-secondary);
+}
+
+/* 统计段（上下文 / cache / token）—— 次要色 */
+.pi-status-stats {
+  color: var(--text-muted);
+}
+
+/* 余额段 —— 金色高亮 */
+.pi-status-balance {
+  color: #f0b45a;
+  font-weight: 600;
 }
 
 @keyframes pi-status-spin {
@@ -167,7 +191,7 @@
 /* Input box scrollbar styles */
 
 .input-editable {
-  min-height: calc(1.5em * 2);
+  min-height: calc(1.5em * 1);
   outline: none;
   color: var(--text-primary);
   font-size: 14px;
