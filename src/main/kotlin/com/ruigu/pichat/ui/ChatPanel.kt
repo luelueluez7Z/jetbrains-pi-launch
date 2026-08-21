@@ -864,6 +864,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private var statsTail = ""
 
+    /** provider-balance 扩展推送的余额文本（如 "💰 ¥12.34"），空串表示不显示。 */
+    private var balanceText = ""
+    private val balanceTail: String
+        get() = if (balanceText.isNotBlank()) " · $balanceText" else ""
+
     private fun formatPiStatus(data: JsonObject): String {
         val tokens = data.getAsJsonObject("tokens")
         val context = data.getAsJsonObject("contextUsage")
@@ -879,7 +884,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         val contextPart = if (max > 0) "${formatTokenCount(used)}/${formatTokenCount(max)} (${formatPercent(percent)})" else "${formatTokenCount(used)}"
         val tail = " · $contextPart · cache ${formatPercent(cachePercent)} · ↑${formatTokenCount(output)} ↓${formatTokenCount(input)}"
         statsTail = tail
-        return "● $phase$tail"
+        return "● $phase$tail$balanceTail"
     }
 
     private fun JsonObject.longValue(key: String): Long =
@@ -1465,7 +1470,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         onEdt {
             busy.value = true
             // 保留统计尾部，不被纯 working 覆盖；随后异步刷新最新统计
-            statusText.value = "● 正在回复…$statsTail"
+            statusText.value = "● 正在回复…$statsTail$balanceTail"
             publishWebState()
             loadSessionStats()
         }
@@ -1542,9 +1547,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         onEdt {
             queueCount.value = total
             statusText.value = when {
-                busy.value -> "● 正在回复…$statsTail"
-                total > 0 -> "● 队列:$total$statsTail"
-                else -> "● 已连接$statsTail"
+                busy.value -> "● 正在回复…$statsTail$balanceTail"
+                total > 0 -> "● 队列:$total$statsTail$balanceTail"
+                else -> "● 已连接$statsTail$balanceTail"
             }
             publishWebState()
         }
@@ -1587,9 +1592,23 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     inputText.value = TextFieldValue(req.raw().get("text").asString)
                 }
             }
+            "setStatus" -> handleSetStatus(req)
             else -> {
                 // setStatus / setWidget / setTitle 及未知请求：第一版忽略
             }
+        }
+        publishWebState()
+    }
+
+    /** 处理扩展 setStatus：仅关心 provider-balance（套餐余额），追加到状态栏文本尾部。 */
+    private fun handleSetStatus(req: ExtensionUiRequest) {
+        val key = req.raw().str("statusKey")
+        if (key != "provider-balance") return
+        balanceText = req.raw().str("statusText")
+        statusText.value = when {
+            busy.value -> "● 正在回复…$statsTail$balanceTail"
+            queueCount.value > 0 -> "● 队列:${queueCount.value}$statsTail$balanceTail"
+            else -> "● 已连接$statsTail$balanceTail"
         }
         publishWebState()
     }
