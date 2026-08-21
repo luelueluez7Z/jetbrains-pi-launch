@@ -739,8 +739,6 @@ export interface ChatInputBoxProps {
   onClearAgent?: () => void;
   /** Open agent settings callback */
   onOpenAgentSettings?: () => void;
-  /** Open prompt settings callback */
-  onOpenPromptSettings?: () => void;
   /** Open model settings (navigate to provider management to add models) */
   onOpenModelSettings?: () => void;
 

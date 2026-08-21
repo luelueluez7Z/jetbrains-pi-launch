@@ -29,7 +29,6 @@ describe('useSubmitHandler', () => {
         fileCompletion: { close },
         commandCompletion: { close },
         agentCompletion: { close },
-        promptCompletion: { close },
         dollarCommandCompletion: { close },
         recordInputHistory,
         onSubmit,
@@ -64,7 +63,6 @@ describe('useSubmitHandler', () => {
         fileCompletion: { close },
         commandCompletion: { close },
         agentCompletion: { close },
-        promptCompletion: { close },
         dollarCommandCompletion: { close },
         recordInputHistory: vi.fn(),
         onSubmit: vi.fn(),
@@ -98,7 +96,6 @@ describe('useSubmitHandler', () => {
         fileCompletion: { close: vi.fn() },
         commandCompletion: { close: vi.fn() },
         agentCompletion: { close: vi.fn() },
-        promptCompletion: { close: vi.fn() },
         dollarCommandCompletion: { close: vi.fn() },
         recordInputHistory: vi.fn(),
         onSubmit: vi.fn(),
@@ -137,7 +134,6 @@ describe('useSubmitHandler', () => {
         fileCompletion: { close },
         commandCompletion: { close },
         agentCompletion: { close },
-        promptCompletion: { close },
         dollarCommandCompletion: { close },
         recordInputHistory,
         onSubmit,
@@ -147,7 +143,7 @@ describe('useSubmitHandler', () => {
 
     result.current();
     expect(invalidateCache).toHaveBeenCalled();
-    expect(close).toHaveBeenCalledTimes(5);
+    expect(close).toHaveBeenCalledTimes(4);
     expect(recordInputHistory).toHaveBeenCalledWith('hello');
     expect(clearInput).toHaveBeenCalled();
 

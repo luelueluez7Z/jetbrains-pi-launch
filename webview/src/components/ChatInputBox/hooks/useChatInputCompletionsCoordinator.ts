@@ -11,11 +11,8 @@ import {
   dollarCommandToDropdownItem,
   fileReferenceProvider,
   fileToDropdownItem,
-  promptProvider,
-  promptToDropdownItem,
   slashCommandProvider,
   type AgentItem,
-  type PromptItem,
 } from '../providers/index.js';
 import { setCursorOffset } from '../utils/selectionUtils.js';
 
@@ -31,7 +28,6 @@ interface UseChatInputCompletionsCoordinatorOptions {
   currentProvider: string;
   onAgentSelect?: (agent: { id: string; name: string; prompt?: string } | null) => void;
   onOpenAgentSettings?: () => void;
-  onOpenPromptSettings?: () => void;
 }
 
 function replaceTextAndSync(
@@ -62,7 +58,6 @@ export function useChatInputCompletionsCoordinator({
   currentProvider,
   onAgentSelect,
   onOpenAgentSettings,
-  onOpenPromptSettings,
 }: UseChatInputCompletionsCoordinatorOptions) {
   const renderFileTagsRef = useRef<() => void>(() => {});
 
@@ -140,46 +135,6 @@ export function useChatInputCompletionsCoordinator({
     },
   });
 
-  const promptDataProvider = useCallback(
-    (query: string, signal: AbortSignal) => promptProvider(query, signal, currentProvider),
-    [currentProvider],
-  );
-
-  const promptCompletion = useCompletionDropdown<PromptItem>({
-    trigger: '!',
-    provider: promptDataProvider,
-    toDropdownItem: promptToDropdownItem,
-    onSelect: (prompt, query) => {
-      if (
-        prompt.id === '__loading__' ||
-        prompt.id === '__empty__' ||
-        prompt.id === '__empty_state__'
-      ) {
-        return;
-      }
-
-      if (prompt.id === '__create_new__') {
-        onOpenPromptSettings?.();
-        if (!editableRef.current || !query) return;
-        const newText = promptCompletion.replaceText(getTextContent(), '', query);
-        editableRef.current.innerText = newText;
-        setCursorOffset(editableRef.current, query.start);
-        handleInputRef.current();
-        return;
-      }
-
-      if (!editableRef.current || !query) return;
-      replaceTextAndSync(
-        editableRef,
-        getTextContent(),
-        prompt.content,
-        query,
-        promptCompletion.replaceText,
-        () => handleInputRef.current()
-      );
-    },
-  });
-
   const dollarCommandCompletion = useCompletionDropdown<CommandItem>({
     trigger: '$',
     provider: dollarCommandProvider,
@@ -201,9 +156,8 @@ export function useChatInputCompletionsCoordinator({
     fileCompletion.close();
     commandCompletion.close();
     agentCompletion.close();
-    promptCompletion.close();
     dollarCommandCompletion.close();
-  }, [fileCompletion, commandCompletion, agentCompletion, promptCompletion, dollarCommandCompletion]);
+  }, [fileCompletion, commandCompletion, agentCompletion, dollarCommandCompletion]);
 
   useEffect(() => {
     closeAllCompletionsRef.current = closeAllCompletions;
@@ -222,7 +176,6 @@ export function useChatInputCompletionsCoordinator({
     fileCompletion,
     commandCompletion,
     agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     isDollarTriggerEnabled: currentProvider === 'codex',
   });
@@ -235,7 +188,6 @@ export function useChatInputCompletionsCoordinator({
       fileCompletion.isOpen ||
       commandCompletion.isOpen ||
       agentCompletion.isOpen ||
-      promptCompletion.isOpen ||
       dollarCommandCompletion.isOpen;
 
     if (!isOtherCompletionOpen) {
@@ -247,7 +199,6 @@ export function useChatInputCompletionsCoordinator({
     fileCompletion,
     commandCompletion,
     agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     inlineCompletion,
   ]);
@@ -260,7 +211,6 @@ export function useChatInputCompletionsCoordinator({
     fileCompletion,
     commandCompletion,
     agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     inlineCompletion,
     closeAllCompletions,

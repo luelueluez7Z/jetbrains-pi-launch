@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
 import { sendBridgeEvent } from './utils/bridge';
-import { preloadSlashCommands, forceRefreshPrompts } from './components/ChatInputBox/providers';
+import { preloadSlashCommands } from './components/ChatInputBox/providers';
 import {
   useScrollBehavior,
   useSessionManagement,
@@ -92,6 +92,9 @@ const App = () => {
   // ── Permission dialog timeout (synced with backend config) ──
   const [permissionDialogTimeoutSeconds, setPermissionDialogTimeoutSeconds] = useState(DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS);
 
+  // ── StatusPanel (todos + subagents) expand/collapse state ──
+  const [statusPanelExpanded, setStatusPanelExpanded] = useState(true);
+
   // ── Local refs (don't trigger re-render, kept in App.tsx) ──
   const isFirstMountRef = useRef(true);
   const chatInputRef = useRef<ChatInputBoxHandle>(null);
@@ -175,14 +178,11 @@ const App = () => {
   // ── Slash command preloading ──
   useEffect(() => {
     preloadSlashCommands();
-    forceRefreshPrompts();
-    const retryTimer = setTimeout(() => { forceRefreshPrompts(); }, 1000);
-    return () => clearTimeout(retryTimer);
   }, []);
 
   useEffect(() => {
     if (isFirstMountRef.current) { isFirstMountRef.current = false; return; }
-    if (currentView === 'chat') { forceRefreshPrompts(); }
+    if (currentView === 'chat') { /* chat view entered */ }
   }, [currentView]);
 
   // Recover task events from task-notification user messages. Recent Claude Code
@@ -380,6 +380,7 @@ const App = () => {
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
     findToolResult, getToolResultRaw, sessionTitle,
+    subagents, globalTodos,
   } = useChatComputations({
     t, messages, subagentHistories, customSessionTitle, streamingActive,
     getMessageText, getContentBlocks,
@@ -504,6 +505,10 @@ const App = () => {
               onLongContextChange={handleLongContextChange}
               messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
+              todos={globalTodos}
+              subagents={subagents}
+              statusPanelExpanded={statusPanelExpanded}
+              onToggleStatusPanel={() => setStatusPanelExpanded((prev) => !prev)}
             />
           </div>
           {currentView === 'history' && (

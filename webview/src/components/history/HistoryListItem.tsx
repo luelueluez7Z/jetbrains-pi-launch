@@ -172,8 +172,8 @@ export const HistoryListItem = memo(({
 
   const handleCopy = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    onCopySessionId(session.sessionId);
-  }, [onCopySessionId, session.sessionId]);
+    onCopySessionId(session.id || session.sessionId);
+  }, [onCopySessionId, session.id, session.sessionId]);
 
   const handleConvertToCliSession = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -301,9 +301,9 @@ export const HistoryListItem = memo(({
         <div className="history-session-id-container">
           <span
             className="history-session-id"
-            title={session.sessionId}
+            title={session.id || session.sessionId}
           >
-            {session.sessionId.slice(0, 8)}
+            {(session.id || session.sessionId).slice(0, 8)}
           </span>
           <button
             className={`history-copy-id-btn ${isCopied ? 'copied' : ''} ${isCopyFailed ? 'failed' : ''}`}

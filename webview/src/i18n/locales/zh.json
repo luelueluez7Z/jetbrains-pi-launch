@@ -130,6 +130,7 @@
       "close": "关闭 (Esc)",
       "counter": "{{current}}/{{total}}",
       "noResults": "无结果",
+  "toolError": "工具执行出错",
       "searching": "搜索中…",
       "expandedHint": "已展开 {{count}} 条早期消息",
       "matchCase": "区分大小写 (Alt+C)",

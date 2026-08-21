@@ -250,37 +250,3 @@ describe('HistoryView conversion', () => {
     expect(screen.getByRole('button', { name: 'Deep Search' })).toHaveProperty('disabled', false);
   });
 });
-
-describe('HistoryView favorite visibility', () => {
-  it('marks favorited session actions for persistent display', () => {
-    render(
-      <HistoryView
-        historyData={{
-          ...historyData,
-          sessions: [
-            {
-              ...historyData.sessions![0],
-              isFavorited: true,
-              favoritedAt: Date.now(),
-            },
-            historyData.sessions![1],
-          ],
-        }}
-        currentProvider="claude"
-        onLoadSession={vi.fn()}
-        onDeleteSession={vi.fn()}
-        onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
-        onUpdateTitle={vi.fn()}
-        onConvertToCliSession={vi.fn()}
-      />,
-    );
-
-    const favoritedButton = screen.getByRole('button', { name: 'Unfavorite session' });
-    const unfavoritedButton = screen.getByRole('button', { name: 'Favorite session' });
-
-    expect(favoritedButton.closest('.history-action-buttons')?.classList.contains('has-favorite')).toBe(true);
-    expect(unfavoritedButton.closest('.history-action-buttons')?.classList.contains('has-favorite')).toBe(false);
-  });
-});

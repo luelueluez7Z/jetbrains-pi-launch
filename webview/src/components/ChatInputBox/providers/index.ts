@@ -22,19 +22,6 @@ export {
 export type { AgentItem } from './agentProvider';
 
 export {
-  promptProvider,
-  promptToDropdownItem,
-  setupPromptsCallback,
-  resetPromptsState,
-  updateGlobalPromptsCache,
-  updateProjectPromptsCache,
-  preloadPrompts,
-  forceRefreshPrompts,
-} from './promptProvider';
-
-export type { PromptItem } from './promptProvider';
-
-export {
   dollarCommandProvider,
   dollarCommandToDropdownItem,
   setupDollarCommandsCallback,

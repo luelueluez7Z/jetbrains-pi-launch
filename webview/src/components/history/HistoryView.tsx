@@ -423,8 +423,8 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
       isEditing={editingSessionId === session.sessionId}
       isSelected={selectedSessionIds.has(session.sessionId)}
       isSelectionMode={isSelectionMode}
-      isCopied={copiedSessionId === session.sessionId}
-      isCopyFailed={copyFailedSessionId === session.sessionId}
+      isCopied={copiedSessionId === (session.id || session.sessionId)}
+      isCopyFailed={copyFailedSessionId === (session.id || session.sessionId)}
       isActiveSession={currentSessionId === session.sessionId}
       editingTitle={editingSessionId === session.sessionId ? editingTitle : ''}
       searchQuery={searchQuery}

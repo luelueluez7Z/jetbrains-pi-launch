@@ -25,7 +25,6 @@ export interface UseSubmitHandlerOptions {
   fileCompletion: CompletionLike;
   commandCompletion: CompletionLike;
   agentCompletion: CompletionLike;
-  promptCompletion: CompletionLike;
   dollarCommandCompletion: CompletionLike;
   recordInputHistory: (text: string) => void;
   onSubmit?: (content: string, attachmentsToSend?: Attachment[]) => void;
@@ -58,7 +57,6 @@ export function useSubmitHandler({
   fileCompletion,
   commandCompletion,
   agentCompletion,
-  promptCompletion,
   dollarCommandCompletion,
   recordInputHistory,
   onSubmit,
@@ -96,7 +94,6 @@ export function useSubmitHandler({
     fileCompletion.close();
     commandCompletion.close();
     agentCompletion.close();
-    promptCompletion.close();
     dollarCommandCompletion.close();
 
     // Record input history
@@ -134,7 +131,6 @@ export function useSubmitHandler({
     fileCompletion,
     commandCompletion,
     agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     recordInputHistory,
     onSubmit,

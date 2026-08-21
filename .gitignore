@@ -8,8 +8,13 @@ build/
 # 本地日志与启动脚本
 runide.out.log
 runide.err.log
+runide-start.log
+runide-start.log.err
 start-ide.cmd
 runide-local.bat
+
+# 构建产物残留
+web/
 
 # webview 构建产物与本地文件
 webview/node_modules/

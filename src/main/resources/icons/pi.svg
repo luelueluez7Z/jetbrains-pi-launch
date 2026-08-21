@@ -1,4 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <rect x="1" y="2.5" width="14" height="11" rx="2" fill="#4B8BF5"/>
-  <path d="M4 6l2.5 2L4 10M8.5 10h3.5" stroke="#FFFFFF" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 800 800">
+  <!-- Official pi logo mark (pi.dev logo-auto.svg), recolored to currentColor
+       so the IDE theme (light/dark) drives the foreground, matching the
+       official logo's black-on-light / white-on-dark behavior. -->
+  <path fill="currentColor" fill-rule="evenodd" d="
+    M165.29 165.29
+    H517.36
+    V400
+    H400
+    V517.36
+    H282.65
+    V634.72
+    H165.29
+    Z
+    M282.65 282.65
+    V400
+    H400
+    V282.65
+    Z
+  "/>
+  <path fill="currentColor" d="M517.36 400 H634.72 V634.72 H517.36 Z"/>
 </svg>

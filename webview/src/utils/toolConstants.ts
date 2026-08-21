@@ -13,13 +13,14 @@ export const EDIT_TOOL_NAMES = new Set([
   'replace_string',
   'write_to_file',
   'multiedit',
+  'write',
 ]);
 
 // Bash/command execution tools
 export const BASH_TOOL_NAMES = new Set(['bash', 'run_terminal_cmd', 'exec_command', 'execute_command', 'shell_command']);
 
 // Search/grep/glob tools
-export const SEARCH_TOOL_NAMES = new Set(['grep', 'glob', 'search', 'find', 'search_files']);
+export const SEARCH_TOOL_NAMES = new Set(['grep', 'glob', 'search', 'find', 'search_files', 'ls']);
 
 // Agent/subagent spawning tools
 export const AGENT_TOOL_NAMES = new Set(['task', 'agent', 'spawn_agent']);

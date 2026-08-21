@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.intellij.openapi.diagnostic.Logger;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -30,6 +31,7 @@ import java.util.function.Consumer;
  */
 public class RpcClient {
 
+    private static final Logger LOG = Logger.getInstance(RpcClient.class);
     private static final Gson GSON = new Gson();
     private static final AtomicInteger SEQ = new AtomicInteger();
 
@@ -71,6 +73,7 @@ public class RpcClient {
 
         String node = PiLocator.resolveNode();
         String cli = PiLocator.findCliJs();
+        LOG.info("[PiChatDiag] resolve: node=" + node + " cli=" + cli);
         if (node == null || cli == null) {
             throw new IOException("无法定位 node 或 pi：\n" + PiLocator.describe());
         }
@@ -85,6 +88,7 @@ public class RpcClient {
         } catch (IOException e) {
             throw new IOException("启动 pi 进程失败: " + e.getMessage() + "\n" + PiLocator.describe(), e);
         }
+        LOG.info("[PiChatDiag] pi process started pid=" + process.pid() + " cwd=" + cwd);
 
         writer = new PrintWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8), true);
         running = true;
@@ -98,11 +102,21 @@ public class RpcClient {
         readerThread.setDaemon(true);
         readerThread.start();
 
-        // 就绪探测
-        getState().thenAccept(res -> {
+        // 就绪探测（带超时，避免 pi 初始化卡住时 UI 永远无响应）
+        long t0 = System.currentTimeMillis();
+        getState().orTimeout(20, TimeUnit.SECONDS).whenComplete((res, err) -> {
+            if (err != null) {
+                LOG.warn("[PiChatDiag] get_state 失败/超时 (" + (System.currentTimeMillis() - t0) + "ms): " + err);
+                fire(l -> l.onError("pi 进程启动后未就绪（" + (System.currentTimeMillis() - t0) + "ms），请检查是否与其他 pi 实例冲突"));
+                return;
+            }
             if (res != null && res.success() && res.data() != null) {
+                LOG.info("[PiChatDiag] get_state OK (" + (System.currentTimeMillis() - t0) + "ms)");
                 Consumer<JsonObject> c = stateReadyConsumer;
                 if (c != null) c.accept(res.data());
+            } else {
+                LOG.warn("[PiChatDiag] get_state 非成功响应: " + (res == null ? "null" : res.toString()));
+                fire(l -> l.onError("pi get_state 返回异常，请检查 pi 配置"));
             }
         });
     }
@@ -152,7 +166,9 @@ public class RpcClient {
             if (!closing) {
                 running = false;
                 failAllPending();
-                fire(l -> l.onProcessExit(safeExitValue(), stderrTail == null ? "" : stderrTail.toString()));
+                String tail = stderrTail == null ? "" : stderrTail.toString();
+                LOG.warn("[PiChatDiag] pi process exited code=" + safeExitValue() + " stderrTail=" + tail.substring(0, Math.min(tail.length(), 800)));
+                fire(l -> l.onProcessExit(safeExitValue(), tail));
             }
         }
     }

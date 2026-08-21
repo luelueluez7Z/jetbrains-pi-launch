@@ -49,7 +49,6 @@ export function ChatInputBoxFooter({
   fileCompletion,
   commandCompletion,
   agentCompletion,
-  promptCompletion,
   dollarCommandCompletion,
   tooltip,
   promptEnhancer,
@@ -87,7 +86,6 @@ export function ChatInputBoxFooter({
   fileCompletion: CompletionController;
   commandCompletion: CompletionController;
   agentCompletion: CompletionController;
-  promptCompletion: CompletionController;
   dollarCommandCompletion?: CompletionController;
   tooltip: TooltipState | null;
   promptEnhancer: {
@@ -181,20 +179,6 @@ export function ChatInputBoxFooter({
         onClose={agentCompletion.close}
         onSelect={(_, index) => agentCompletion.selectIndex(index)}
         onMouseEnter={agentCompletion.handleMouseEnter}
-      />
-
-      {/* ! prompt selection dropdown menu */}
-      <CompletionDropdown
-        isVisible={promptCompletion.isOpen}
-        position={promptCompletion.position}
-        width={400}
-        items={promptCompletion.items}
-        selectedIndex={promptCompletion.activeIndex}
-        loading={promptCompletion.loading}
-        emptyText={t('settings.prompt.noPromptsDropdown')}
-        onClose={promptCompletion.close}
-        onSelect={(_, index) => promptCompletion.selectIndex(index)}
-        onMouseEnter={promptCompletion.handleMouseEnter}
       />
 
       {/* $ command dropdown menu */}

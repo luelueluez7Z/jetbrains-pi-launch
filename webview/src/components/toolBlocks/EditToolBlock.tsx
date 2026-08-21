@@ -7,6 +7,7 @@ import { openFile, showDiff, refreshFile } from '../../utils/bridge';
 import { getFileIcon } from '../../utils/fileIcons';
 import { getToolLineInfo, getToolEditCount, resolveToolTarget } from '../../utils/toolPresentation';
 import { normalizeToolInput } from '../../utils/toolInputNormalization';
+import { normalizeToolName } from '../../utils/toolConstants';
 import EditToolGroupBlock from './EditToolGroupBlock';
 import GenericToolBlock from './GenericToolBlock';
 
@@ -264,6 +265,10 @@ const EditToolBlock = memo(function EditToolBlock({ items }: EditToolBlockProps)
   const result = firstItem?.result;
   const toolId = firstItem?.toolId;
 
+  // The pi `write` tool shares this diff view (whole content as additions);
+  // show a "写入文件" title instead of the generic edit label.
+  const isWrite = normalizeToolName(name ?? '') === 'write';
+
   const isDenied = useIsToolDenied(toolId);
 
   const normalizedInput = input ? normalizeToolInput(name, input) : input;
@@ -419,7 +424,7 @@ const EditToolBlock = memo(function EditToolBlock({ items }: EditToolBlockProps)
             <span className="codicon codicon-edit tool-title-icon" />
 
             <span className="tool-title-text">
-              {t('tools.editFileTitle')}
+              {isWrite ? t('tools.writeFile') : t('tools.editFileTitle')}
             </span>
             <span
               className="tool-title-summary clickable-file"

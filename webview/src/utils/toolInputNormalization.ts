@@ -107,7 +107,7 @@ export function normalizeToolInput(name: string | undefined, input: ToolInput | 
     };
   }
 
-  if (normalizedName === 'write_file') {
+  if (normalizedName === 'write' || normalizedName === 'write_file') {
     return {
       ...inputRecord,
       file_path:

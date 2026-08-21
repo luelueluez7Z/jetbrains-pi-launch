@@ -1,0 +1,378 @@
+/* StatusPanel Styles — 自 cc-gui StatusPanel.less 精简（仅 Todos + 子代理） */
+
+.status-panel {
+  position: relative;
+  margin: 0 20px 8px 20px;
+}
+
+/* Tab Header - Always visible */
+.status-panel-tabs {
+  display: flex;
+  align-items: center;
+  background: var(--color-chat-bars-bg, var(--bg-secondary));
+  border: 1px solid var(--color-chat-bars-border, var(--border-primary));
+  border-radius: 6px;
+  padding: 5px 8px;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: 80%;
+
+  &::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 2px;
+
+    &:hover {
+      background: var(--scrollbar-thumb-hover);
+    }
+  }
+}
+
+.status-panel-tab {
+  flex: 1 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-weight: 500;
+  color: var(--color-chat-bars-muted-text, var(--text-muted));
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  background: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  white-space: nowrap;
+  border: none;
+  font-size: inherit;
+  font-family: inherit;
+
+  /* 分割线 - 除了最后一个 tab */
+  &:not(:last-child) {
+    border-right: 1px solid var(--color-chat-bars-border, var(--border-primary));
+    border-radius: 4px 0 0 4px;
+    margin-right: -1px;
+  }
+
+  &:last-child {
+    border-radius: 0 4px 4px 0;
+  }
+
+  &:hover {
+    color: var(--color-chat-bars-text, var(--text-primary));
+    background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+  }
+
+  &.active {
+    color: var(--color-chat-bars-text, var(--text-primary));
+    background: var(--color-chat-bars-active-bg, var(--bg-tertiary));
+  }
+
+  .codicon {
+    font-size: 12px;
+    opacity: 0.8;
+  }
+
+  &.active .codicon {
+    opacity: 1;
+  }
+
+  .tab-label {
+    font-weight: 500;
+  }
+
+  .tab-progress {
+    font-size: 10px;
+    color: var(--color-chat-bars-muted-text, var(--text-secondary));
+    font-family: var(--idea-editor-font-family, monospace);
+  }
+
+  &.active .tab-progress {
+    color: var(--color-chat-bars-text, var(--text-primary));
+  }
+}
+
+.status-panel-tab-loading {
+  font-size: 11px;
+  animation: status-spin 1s linear infinite;
+}
+
+/* Collapse button (pi 模式面板自带) */
+.status-panel-collapse {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-chat-bars-muted-text, var(--text-muted));
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+
+  .codicon {
+    font-size: 13px;
+  }
+
+  &:hover {
+    color: var(--color-chat-bars-text, var(--text-primary));
+    background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+  }
+}
+
+/* Popover - Floating content panel */
+.status-panel-popover {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  z-index: 100;
+  animation: popover-slide-up 0.15s ease-out;
+}
+
+@keyframes popover-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Todo Content */
+.status-panel-todo-list {
+  padding: 4px 12px;
+  max-height: 200px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--scrollbar-thumb-hover);
+    }
+  }
+}
+
+.status-panel-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-todo-text);
+  padding: 6px 0;
+
+  &.status-completed {
+    .status-panel-todo-content {
+      color: var(--text-muted);
+      text-decoration: line-through;
+    }
+  }
+
+  &.status-cancelled {
+    .status-panel-todo-content {
+      color: var(--text-muted);
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+  }
+}
+
+.status-panel-todo-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  .codicon {
+    font-size: 14px;
+  }
+
+  &.status-pending .codicon {
+    color: var(--color-todo-status-pending);
+  }
+
+  &.status-in-progress .codicon {
+    color: var(--color-todo-panel-progress);
+    animation: status-spin 1s linear infinite;
+  }
+
+  &.status-completed .codicon {
+    color: var(--color-todo-status-completed);
+  }
+
+  &.status-cancelled .codicon {
+    color: var(--text-muted);
+  }
+}
+
+.status-panel-todo-content {
+  flex: 1;
+  word-break: break-word;
+}
+
+.status-panel-todo-blocked {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+
+  .codicon {
+    font-size: 11px;
+    vertical-align: middle;
+    margin-right: 2px;
+  }
+}
+
+/* Subagent Content */
+.subagent-list {
+  padding: 4px 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--scrollbar-thumb-hover);
+    }
+  }
+}
+
+.subagent-item-wrapper {
+  border-radius: 4px;
+}
+
+.subagent-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 4px;
+  min-height: 32px;
+  gap: 8px;
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+}
+
+.subagent-chevron {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.subagent-status-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  .codicon {
+    font-size: 14px;
+  }
+
+  &.status-running .codicon {
+    color: var(--color-todo-panel-progress);
+    animation: status-spin 1s linear infinite;
+  }
+
+  &.status-completed .codicon {
+    color: var(--color-todo-status-completed);
+  }
+
+  &.status-error .codicon {
+    color: #ff6b6b;
+  }
+}
+
+.subagent-type {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  text-transform: capitalize;
+}
+
+.subagent-description {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Empty state */
+.status-panel-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Spin animation */
+@keyframes status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

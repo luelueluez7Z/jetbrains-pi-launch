@@ -1,11 +1,14 @@
 import { type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatInputBox } from './ChatInputBox';
+import './ChatScreen.css';
 import type {
   Attachment,
   ChatInputBoxHandle,
 } from './ChatInputBox/types';
 import { MessageList } from './MessageList';
+import { StatusPanel } from './StatusPanel';
+import type { TodoItem, SubagentInfo } from '../types';
 import {
   SessionIdContext,
   SubagentHistoryContext,
@@ -81,6 +84,12 @@ export interface ChatScreenProps {
   // Message queue
   messageQueue: MessageQueueValue;
   onRemoveFromQueue: (id: string) => void;
+
+  // StatusPanel (todos + subagents)
+  todos: TodoItem[];
+  subagents: SubagentInfo[];
+  statusPanelExpanded: boolean;
+  onToggleStatusPanel: () => void;
 }
 
 /**
@@ -100,9 +109,10 @@ export const ChatScreen = ({
   onStreamingEnabledChange,
   onAutoOpenFileEnabledChange, onLongContextChange,
   messageQueue, onRemoveFromQueue,
+  todos, subagents, statusPanelExpanded, onToggleStatusPanel,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
-  const { messages, status, loading, isThinking, streamingActive } = useMessages();
+  const { messages, status, loading, isThinking, streamingActive, subagentHistories } = useMessages();
   const { currentSessionId } = useSession();
   const previousMessageKeySnapshotRef = useRef<MessageKeySnapshot | undefined>(undefined);
   const messageKeySnapshot = useMemo(
@@ -127,7 +137,14 @@ export const ChatScreen = ({
   }, [onSubmit]);
 
   return (
-    <>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {currentProvider !== 'pi' ? (
+        <div className="pichat-loading">
+          <div className="pichat-loading-spinner" />
+          <div>正在加载中…</div>
+        </div>
+      ) : (
+        <>
       <div className="messages-shell">
         <div className="messages-container" ref={messagesContainerRef}>
           <SessionIdContext.Provider value={sessionIdCtxValue}>
@@ -153,6 +170,17 @@ export const ChatScreen = ({
         </div>
       </div>
 
+      <StatusPanel
+        todos={todos}
+        subagents={subagents}
+        subagentHistories={subagentHistories}
+        currentSessionId={currentSessionId}
+        currentProvider={currentProvider}
+        expanded={statusPanelExpanded}
+        isStreaming={streamingActive}
+        onToggleStatusPanel={onToggleStatusPanel}
+      />
+
       <div className="input-area" ref={inputAreaRef}>
         <ChatInputBox
           ref={chatInputRef}
@@ -166,7 +194,7 @@ export const ChatScreen = ({
           usageMaxTokens={usageMaxTokens}
           showUsage={true}
           alwaysThinkingEnabled={activeProviderConfig?.settingsConfig?.alwaysThinkingEnabled ?? claudeSettingsAlwaysThinkingEnabled}
-          placeholder={sendShortcut === 'cmdEnter' ? t('chat.inputPlaceholderCmdEnter') : t('chat.inputPlaceholderEnter')}
+          placeholder=''
           sdkInstalled={currentSdkInstalled}
           sdkStatusLoading={sdkStatusLoading}
           sdkStatusError={sdkStatusError !== null}
@@ -204,8 +232,12 @@ export const ChatScreen = ({
           onAutoOpenFileEnabledChange={onAutoOpenFileEnabledChange}
           longContextEnabled={longContextEnabled}
           onLongContextChange={onLongContextChange}
+          statusPanelExpanded={statusPanelExpanded}
+          onToggleStatusPanel={onToggleStatusPanel}
         />
       </div>
-    </>
+        </>
+      )}
+    </div>
   );
 };

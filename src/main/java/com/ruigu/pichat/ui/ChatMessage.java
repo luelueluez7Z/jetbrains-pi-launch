@@ -1,5 +1,7 @@
 package com.ruigu.pichat.ui;
 
+import com.google.gson.JsonElement;
+
 /**
  * 会话中的一条消息。可变对象，流式更新时直接修改字段。
  */
@@ -15,6 +17,8 @@ public class ChatMessage {
     private String argsSummary = "";
     private String toolStatus = "";
     private String toolResult = "";
+    /** tool 执行返回的结构化详情（如 subagent 的 details.results[].messages），随 toolResult 一并传给前端。 */
+    private JsonElement toolResultDetails;
     private long timestamp = System.currentTimeMillis();
 
     public static ChatMessage user(String text) {
@@ -76,6 +80,8 @@ public class ChatMessage {
     public String getToolResult() { return toolResult; }
     public void setToolResult(String toolResult) { this.toolResult = toolResult; }
     public void appendToolResult(String delta) { this.toolResult += delta; }
+    public JsonElement getToolResultDetails() { return toolResultDetails; }
+    public void setToolResultDetails(JsonElement toolResultDetails) { this.toolResultDetails = toolResultDetails; }
     public long getTimestamp() { return timestamp; }
 
     /** 助手消息是否没有任何可见内容。 */

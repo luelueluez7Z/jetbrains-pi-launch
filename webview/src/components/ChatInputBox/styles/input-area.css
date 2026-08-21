@@ -33,7 +33,7 @@
 }
 
 .pi-status-bar-icon.pi-status-busy {
-  color: var(--accent, #4b8bf5);
+  color: #c8a9ee;
 }
 
 .pi-status-bar-icon.pi-status-busy svg {
@@ -41,7 +41,7 @@
 }
 
 .pi-status-bar-icon.pi-status-idle {
-  color: #55d5ad;
+  color: #c8a9ee;
 }
 
 .pi-status-bar-icon.pi-status-disconnected {
@@ -49,7 +49,7 @@
 }
 
 .pi-status-bar-icon.pi-status-ready {
-  color: var(--text-secondary);
+  color: #c8a9ee;
 }
 
 .pi-status-bar-text {
@@ -57,29 +57,37 @@
   min-width: 0;
 }
 
-/* 状态主文本 —— 随状态变色（与左侧图标一致） */
+/* 状态主文本 —— 参考 codex 配色：统一淡紫（异常/断开保留红色） */
 .pi-status-phase.pi-status-phase-busy {
-  color: var(--accent, #4b8bf5);
+  color: #c8a9ee;
 }
 .pi-status-phase.pi-status-phase-idle {
-  color: #55d5ad;
+  color: #c8a9ee;
 }
 .pi-status-phase.pi-status-phase-disconnected {
   color: #ef6a6a;
 }
 .pi-status-phase.pi-status-phase-ready {
-  color: var(--text-secondary);
+  color: #c8a9ee;
 }
 
-/* 统计段（上下文 / cache / token）—— 次要色 */
+/* 统计段 —— 参考 codex 配色：context 浅橙 / cache 浅蓝 / tokens 灰 */
 .pi-status-stats {
   color: var(--text-muted);
 }
+.pi-status-context {
+  color: #d8a382;
+}
+.pi-status-cache {
+  color: #8fb3ef;
+}
+.pi-status-tokens {
+  color: var(--text-muted);
+}
 
-/* 余额段 —— 金色高亮 */
+/* 余额段 —— 金色，不加粗 */
 .pi-status-balance {
   color: #f0b45a;
-  font-weight: 600;
 }
 
 @keyframes pi-status-spin {
@@ -191,7 +199,7 @@
 /* Input box scrollbar styles */
 
 .input-editable {
-  min-height: calc(1.5em * 1);
+  min-height: calc(1.5em * 2);
   outline: none;
   color: var(--text-primary);
   font-size: 14px;
@@ -205,6 +213,11 @@
   content: attr(data-placeholder);
   color: var(--input-placeholder);
   pointer-events: none;
+}
+
+/* placeholder 为空时不渲染任何提示（伪元素 content 为空字符串仍有高度，需要 display:none） */
+.input-editable:empty[data-placeholder='']::before {
+  display: none;
 }
 
 .input-editable:focus {

@@ -444,7 +444,9 @@ describe('useWindowCallbacks integration', () => {
 
   // ===== Codex thread transition: route long titles to local-only =====
 
-  it('setSessionId with title > 50 chars uses applyHistoryTitleLocal to avoid backend 50-char limit', () => {
+  // ===== setSessionId no longer auto-writes titles (backend-managed since session-management simplification) =====
+
+  it('setSessionId does not auto-write any title (backend owns titles)', () => {
     const longTitle = 'A very long AI-generated session title that exceeds fifty characters easily';
     const opts = createOptions({
       customSessionTitleRef: { current: longTitle },
@@ -456,11 +458,11 @@ describe('useWindowCallbacks integration', () => {
       window.setSessionId!('sess-new');
     });
 
-    expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-new', longTitle);
+    expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
     expect(opts.updateHistoryTitle).not.toHaveBeenCalled();
   });
 
-  it('setSessionId with title <= 50 chars uses updateHistoryTitle for backend persistence', () => {
+  it('setSessionId does not auto-write short titles either', () => {
     const shortTitle = 'Short user-set title';
     const opts = createOptions({
       customSessionTitleRef: { current: shortTitle },
@@ -472,7 +474,7 @@ describe('useWindowCallbacks integration', () => {
       window.setSessionId!('sess-new');
     });
 
-    expect(opts.updateHistoryTitle).toHaveBeenCalledWith('sess-new', shortTitle);
+    expect(opts.updateHistoryTitle).not.toHaveBeenCalled();
     expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
   });
 

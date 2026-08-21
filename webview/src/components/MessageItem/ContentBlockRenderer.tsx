@@ -8,6 +8,7 @@ import {
   BashToolBlock,
   EditToolBlock,
   GenericToolBlock,
+  LsToolBlock,
   TaskExecutionBlock,
 } from '../toolBlocks';
 import type { EditToolItem } from '../toolBlocks/EditToolBlock';
@@ -340,6 +341,17 @@ export function ContentBlockRenderer({
     if (isToolName(block.name, BASH_TOOL_NAMES)) {
       return (
         <BashToolBlock
+          name={block.name}
+          input={block.input}
+          result={findToolResult(block.id, messageIndex)}
+          toolId={block.id}
+        />
+      );
+    }
+
+    if (normalizeToolName(block.name ?? '') === 'ls') {
+      return (
+        <LsToolBlock
           name={block.name}
           input={block.input}
           result={findToolResult(block.id, messageIndex)}

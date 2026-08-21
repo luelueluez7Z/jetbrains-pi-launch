@@ -279,4 +279,139 @@ describe('extractSubagentsFromMessages', () => {
       tu_spawn: { success: true, completed: true, messages: [] },
     })[0].status).toBe('error');
   });
+
+  // ── pi 官方 subagent 工具适配 ────────────────────────────────────────────
+  it('extracts a single-mode pi subagent from tool details', () => {
+    const call: ClaudeMessage = {
+      type: 'assistant',
+      content: '',
+      raw: {
+        message: {
+          content: [{
+            type: 'tool_use',
+            id: 'call_pi_subagent',
+            name: 'subagent',
+            input: { agent: 'scout', task: '调研认证代码' },
+          }],
+        },
+      },
+    };
+    const result: ClaudeMessage = {
+      type: 'user',
+      content: '',
+      raw: {
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'call_pi_subagent',
+          content: [{ type: 'text', text: 'final report' }],
+        }],
+        toolUseResult: {
+          details: {
+            mode: 'single',
+            results: [{
+              agent: 'scout',
+              task: '调研认证代码',
+              exitCode: 0,
+              messages: [
+                { role: 'assistant', content: [{ type: 'toolCall', name: 'read', arguments: { file_path: 'src/auth.ts' } }] },
+                { role: 'assistant', content: [{ type: 'text', text: 'found auth' }] },
+              ],
+              usage: { turns: 2, contextTokens: 500 },
+            }],
+          },
+        },
+      } as any,
+    };
+
+    const messages = [call, result];
+    const subagents = extractSubagentsFromMessages(
+      messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages),
+    );
+
+    expect(subagents).toHaveLength(1);
+    expect(subagents[0]).toMatchObject({
+      id: 'call_pi_subagent',
+      type: 'scout',
+      description: '调研认证代码',
+      prompt: '调研认证代码',
+      status: 'completed',
+      agentId: 'call_pi_subagent',
+      // resultText 优先取子代理消息里的最终文本输出
+      resultText: 'found auth',
+      totalToolUseCount: 2,
+    });
+  });
+
+  it('marks a failed/parallel pi subagent and falls back when details are missing', () => {
+    // 并行模式：exitCode 非 0 → error
+    const parallel: ClaudeMessage = {
+      type: 'assistant',
+      content: '',
+      raw: {
+        message: {
+          content: [{
+            type: 'tool_use',
+            id: 'call_parallel',
+            name: 'subagent',
+            input: { tasks: [{ agent: 'worker', task: 'A' }, { agent: 'worker', task: 'B' }] },
+          }],
+        },
+      },
+    };
+    const parallelResult: ClaudeMessage = {
+      type: 'user',
+      content: '',
+      raw: {
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'call_parallel',
+          content: 'Parallel: 1/2 succeeded',
+          is_error: true,
+        }],
+        toolUseResult: {
+          details: {
+            mode: 'parallel',
+            results: [
+              { agent: 'worker', task: 'A', exitCode: 0, messages: [], usage: { turns: 1 } },
+              { agent: 'worker', task: 'B', exitCode: 1, messages: [], usage: { turns: 0 } },
+            ],
+          },
+        },
+      } as any,
+    };
+
+    const messages = [parallel, parallelResult];
+    const subagents = extractSubagentsFromMessages(
+      messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages),
+    );
+
+    expect(subagents).toHaveLength(1);
+    expect(subagents[0]).toMatchObject({
+      id: 'call_parallel',
+      type: 'parallel',
+      status: 'error',
+      description: '2 个并行子代理',
+    });
+
+    // 无 details（如历史回放未保留）时退化为单条，status 从 tool_result.is_error 推导
+    const noDetails: ClaudeMessage[] = [{
+      type: 'assistant',
+      content: '',
+      raw: {
+        message: {
+          content: [{
+            type: 'tool_use',
+            id: 'call_nodetails',
+            name: 'subagent',
+            input: { agent: 'planner', task: '制定计划' },
+          }],
+        },
+      },
+    }];
+    const fallback = extractSubagentsFromMessages(
+      noDetails, getContentBlocks, findToolResult(noDetails), getToolResultRaw(noDetails),
+    );
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0]).toMatchObject({ id: 'call_nodetails', type: 'planner', status: 'completed' });
+  });
 });

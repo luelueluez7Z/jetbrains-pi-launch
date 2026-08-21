@@ -36,7 +36,6 @@ import {
   useChatInputAttachmentsCoordinator,
   useChatInputCompletionsCoordinator,
   useChatInputSelectionController,
-  useOpenSourceBannerState,
   useResetAttachmentsOnSessionChange,
   useSpaceKeyListener,
   useCompositionSafeTagRendering,
@@ -113,7 +112,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       selectedAgent,
       onAgentSelect,
       onOpenAgentSettings,
-      onOpenPromptSettings,
       onOpenModelSettings,
       hasMessages = false,
       onRewind,
@@ -135,7 +133,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     const { t } = useTranslation();
     const { setSettingsInitialTab, setCurrentView } = useUIState();
 
-    const { showOpenSourceBanner, handleDismissOpenSourceBanner } = useOpenSourceBannerState();
     const {
       attachments,
       setInternalAttachments,
@@ -253,7 +250,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       fileCompletion,
       commandCompletion,
       agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       inlineCompletion,
       debouncedDetectCompletion,
@@ -271,7 +267,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       currentProvider,
       onAgentSelect,
       onOpenAgentSettings,
-      onOpenPromptSettings,
     });
 
     // Performance optimization: Debounced onInput callback
@@ -459,7 +454,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       fileCompletion,
       commandCompletion,
       agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       recordInputHistory,
       onSubmit,
@@ -527,7 +521,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       fileCompletion,
       commandCompletion,
       agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       handleMacCursorMovement,
       handleHistoryKeyDown,
@@ -559,7 +552,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       fileCompletion,
       commandCompletion,
       agentCompletion,
-      promptCompletion,
       dollarCommandCompletion,
       completionSelectedRef,
       submittedOnEnterRef,
@@ -655,7 +647,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
 
         <ChatInputBoxHeader
           currentProvider={currentProvider}
-          t={t}
           attachments={attachments}
           onRemoveAttachment={handleRemoveAttachment}
           activeFile={activeFile}
@@ -674,8 +665,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           onToggleStatusPanel={onToggleStatusPanel}
           messageQueue={messageQueue}
           onRemoveFromQueue={onRemoveFromQueue}
-          showOpenSourceBanner={showOpenSourceBanner}
-          onDismissOpenSourceBanner={handleDismissOpenSourceBanner}
           autoOpenFileEnabled={autoOpenFileEnabled}
           onRequestEnableFileContext={handleRequestEnableFileContext}
         />
@@ -725,7 +714,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
                   fileCompletion.isOpen ||
                   commandCompletion.isOpen ||
                   agentCompletion.isOpen ||
-                  promptCompletion.isOpen ||
                   dollarCommandCompletion.isOpen
                 ) {
                   return;
@@ -795,7 +783,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           fileCompletion={fileCompletion}
           commandCompletion={commandCompletion}
           agentCompletion={agentCompletion}
-          promptCompletion={promptCompletion}
           dollarCommandCompletion={dollarCommandCompletion}
           tooltip={tooltip}
           promptEnhancer={{

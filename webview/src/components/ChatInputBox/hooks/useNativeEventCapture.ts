@@ -13,7 +13,6 @@ export interface UseNativeEventCaptureOptions {
   fileCompletion: CompletionOpenLike;
   commandCompletion: CompletionOpenLike;
   agentCompletion: CompletionOpenLike;
-  promptCompletion: CompletionOpenLike;
   dollarCommandCompletion: CompletionOpenLike;
   completionSelectedRef: MutableRefObject<boolean>;
   submittedOnEnterRef: MutableRefObject<boolean>;
@@ -37,7 +36,6 @@ export function useNativeEventCapture({
   fileCompletion,
   commandCompletion,
   agentCompletion,
-  promptCompletion,
   dollarCommandCompletion,
   completionSelectedRef,
   submittedOnEnterRef,
@@ -53,7 +51,6 @@ export function useNativeEventCapture({
     fileCompletion,
     commandCompletion,
     agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     completionSelectedRef,
     submittedOnEnterRef,
@@ -68,7 +65,6 @@ export function useNativeEventCapture({
     fileCompletion,
     commandCompletion,
     agentCompletion,
-    promptCompletion,
     dollarCommandCompletion,
     completionSelectedRef,
     submittedOnEnterRef,
@@ -114,7 +110,7 @@ export function useNativeEventCapture({
         ((ev.key === 'e' || ev.key === 'E') && ev.ctrlKey && !ev.metaKey);
       if (isCursorMovementKey) return;
 
-      if (latest.fileCompletion.isOpen || latest.commandCompletion.isOpen || latest.agentCompletion.isOpen || latest.promptCompletion.isOpen || latest.dollarCommandCompletion.isOpen) {
+      if (latest.fileCompletion.isOpen || latest.commandCompletion.isOpen || latest.agentCompletion.isOpen || latest.dollarCommandCompletion.isOpen) {
         return;
       }
 
@@ -168,7 +164,7 @@ export function useNativeEventCapture({
         latest.completionSelectedRef.current = false;
         return;
       }
-      if (latest.fileCompletion.isOpen || latest.commandCompletion.isOpen || latest.agentCompletion.isOpen || latest.promptCompletion.isOpen || latest.dollarCommandCompletion.isOpen) {
+      if (latest.fileCompletion.isOpen || latest.commandCompletion.isOpen || latest.agentCompletion.isOpen || latest.dollarCommandCompletion.isOpen) {
         return;
       }
       latest.handleSubmit();

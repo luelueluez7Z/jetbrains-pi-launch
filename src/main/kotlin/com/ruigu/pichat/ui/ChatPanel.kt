@@ -65,7 +65,17 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.editor.ScrollType
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Computable
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.search.FilenameIndex
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefJSQuery
 import com.ruigu.pichat.rpc.ExtensionUiRequest
@@ -91,6 +101,7 @@ import java.util.Comparator
 import java.util.IdentityHashMap
 import java.util.LinkedHashMap
 import java.awt.BorderLayout
+import java.io.File
 import java.nio.charset.StandardCharsets
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -102,8 +113,10 @@ import javax.swing.JPanel
  */
 class ChatPanel(private val project: Project) : Disposable, PiListener {
 
+    private val LOG = Logger.getInstance(ChatPanel::class.java)
+
     private data class ModelItem(val provider: String, val id: String, val name: String, val contextWindow: Long = 0)
-    private data class SessionItem(val path: String, val name: String, val isCurrent: Boolean, val title: String? = null)
+    private data class SessionItem(val path: String, val name: String, val isCurrent: Boolean, val title: String? = null, val id: String = parseSessionId(name))
     private data class ExtensionDialogState(val request: ExtensionUiRequest)
 
     @Volatile
@@ -199,21 +212,28 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         candidate.onStateReady { data ->
             onEdt {
                 if (candidate !== client) return@onEdt
-                handleStateReady(data)
-                val target = pendingSessionSwitch.remove(candidate) ?: return@onEdt
-                candidate.switchSession(target).thenAccept { result ->
-                    onEdt {
-                        if (candidate !== client) return@onEdt
-                        if (result != null && result.success()) {
-                            clearMessages()
-                            addSystem("已打开独立 Pi 会话")
-                            refreshStatus()
-                            loadHistory()
-                            loadSessionList(target)
-                        } else {
-                            addSystem("打开会话失败: " + (result?.error() ?: "无响应"))
+                val target = pendingSessionSwitch.remove(candidate)
+                if (target != null) {
+                    // 切换会话：跳过 handleStateReady 内的 loadHistory（异步），
+                    // 避免它晚到后覆盖 switchSession 加载的目标会话历史。
+                    handleStateReady(data, loadHistory = false)
+                    candidate.switchSession(target).thenAccept { result ->
+                        onEdt {
+                            if (candidate !== client) return@onEdt
+                            if (result != null && result.success()) {
+                                clearMessages()
+                                addSystem("已打开独立 Pi 会话")
+                                refreshStatus()
+                                loadHistory(force = true)
+                                loadSessionList(target)
+                            } else {
+                                addSystem("打开会话失败: " + (result?.error() ?: "无响应"))
+                            }
                         }
                     }
+                } else {
+                    // 正常打开（新建会话）：加载默认历史（通常为空）
+                    handleStateReady(data)
                 }
             }
         }
@@ -225,19 +245,31 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private fun setupWebUi() {
         browserQuery.addHandler { raw ->
             onEdt { handleWebAction(raw) }
-            null
+            // JBCefJSQuery 契约：必须返回 Response，返回 null 会让 cefQuery
+            // 查询失败（cc-gui 同样返回 Response("ok")）。
+            JBCefJSQuery.Response("ok")
         }
 
-        val html = javaClass.getResourceAsStream("/web/index.html")
-            ?.bufferedReader(StandardCharsets.UTF_8)
+        val html = javaClass.getResourceAsStream("/web/index.html")            ?.bufferedReader(StandardCharsets.UTF_8)
             ?.use { it.readText() }
             ?: "<html><body>Pi Chat UI resources were not found.</body></html>"
         val dark = com.intellij.util.ui.UIUtil.isUnderDarcula()
+        // JBCefJSQuery 注入页面的全局查询函数名（cefQuery_<hash>_<index>）。
+        // 把 sendToJava 直接嵌入 HTML 调用它——不再依赖 executeJavaScript 注入。
+        val queryFunc = browserQuery.funcName
         val bootstrap = """
             <script>
               window.__INITIAL_IDE_THEME__ = '${if (dark) "dark" else "light"}';
               window.__INITIAL_TAB_PROVIDER__ = 'pi';
               window.__INITIAL_TAB_MODEL__ = '';
+              // JS→Java bridge：直接调 JBCefJSQuery 注入页面的 cefQuery_* 函数。
+              // 嵌入 HTML 而非 executeJavaScript 注入——remote JCEF 下 onLoadEnd
+              // 回调可能丢失，注入不可靠（这是之前 bridge 完全不通的根因）。
+              window.sendToJava = function(payload) {
+                try {
+                  window.$queryFunc({request: '' + JSON.stringify({type:'bridge',payload:String(payload)}), onSuccess: function(response) {}, onFailure: function(error_code, error_message) {}});
+                } catch (e) {}
+              };
             </script>
         """.trimIndent()
         // The bundled JavaScript itself contains a literal </head>. It appears before
@@ -250,27 +282,14 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         } else {
             html
         }
-
-        // Keep JBCefJSQuery's generated bridge code out of the HTML document.
-        // It can contain script-sensitive text and corrupt a single-file Vite bundle,
-        // which makes Chromium display the minified JavaScript as page text. This is
-        // also how jetbrains-cc-gui installs its bridge: after the main frame loads.
-        val bridgeCall = browserQuery.inject("JSON.stringify({type:'bridge',payload:String(payload)})")
-        browser.jbCefClient.cefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
-            override fun onLoadEnd(cefBrowser: CefBrowser, frame: CefFrame, httpStatusCode: Int) {
-                if (!frame.isMain) return
-                val runtimeBootstrap = """
-                    window.__CCG_PAGE_GENERATION__ = 1;
-                    window.__CCGUI_PAGE_CONTEXT_READY__ = true;
-                    window.__CCGUI_PAGE_LOAD_KIND__ = 'initial_load';
-                    window.__CCGUI_RECOVERY_RELOAD__ = false;
-                    window.sendToJava = function(payload) { $bridgeCall; };
-                    if (typeof window.__ccgOnBridgeReady === 'function') window.__ccgOnBridgeReady();
-                """.trimIndent()
-                cefBrowser.executeJavaScript(runtimeBootstrap, cefBrowser.url, 0)
-            }
-        })
-        browser.loadHTML(htmlWithInitialState)
+        // 用 file:// 临时文件加载（比 loadHTML 的 data: URL 更稳定）。
+        // bridge 已直接嵌入 HTML（window.sendToJava 调 cefQuery_* 函数），
+        // 不再需要 executeJavaScript 注入。
+        val tmpHtml = java.io.File.createTempFile("pichat-", ".html")
+        tmpHtml.writeText(htmlWithInitialState, StandardCharsets.UTF_8)
+        tmpHtml.deleteOnExit()
+        LOG.info("[PiChatDiag] loading file:// html size=" + htmlWithInitialState.length)
+        browser.loadURL(tmpHtml.toURI().toString())
     }
 
     private fun handleWebAction(raw: String) {
@@ -279,7 +298,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         } catch (_: Exception) {
             return
         }
-        when (action.str("type")) {
+        val type = action.str("type")
+        if (type != "heartbeat") {
+            LOG.info("[PiChatDiag] webAction: " + type + (if (type == "bridge") " payload=" + action.str("payload").take(120) else ""))
+        }
+        when (type) {
             "bridge" -> handleReferenceBridge(action.str("payload"))
             "ready" -> {
                 webUiReady = true
@@ -313,6 +336,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         val content = if (separator >= 0) payload.substring(separator + 1) else ""
         when (event) {
             "frontend_ready" -> {
+                LOG.info("[PiChatDiag] >>> frontend_ready 收到，webUiReady=true")
                 webUiReady = true
                 webStatusSent = null
                 publishDependencyStatus()
@@ -358,11 +382,16 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 } catch (_: Exception) {
                     content
                 }
-                sessions.firstOrNull { it.path == id }?.let { selectSession(it) }
+                LOG.info("[PiChatDiag] load_session id=" + id + " sessions=" + sessions.size)
+                val match = sessions.firstOrNull { it.path.equals(id, ignoreCase = true) }
+                LOG.info("[PiChatDiag] load_session match=" + (match?.path ?: "null"))
+                match?.let { selectSession(it) }
             }
+            "load_subagent_session" -> handleLoadSubagentSession(content)
             "delete_session" -> deleteSession(content)
             "delete_sessions" -> deleteSessions(content)
             "update_title" -> updateSessionTitle(content)
+            "open_file" -> handleOpenFile(content)
             "get_context_presets" -> publishContextPresets()
             "set_context_preset" -> handleSetContextPreset(content)
             "export_session", "toggle_favorite",
@@ -373,6 +402,179 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun publishDependencyStatus() {
         callWeb("updateDependencyStatus", "{}")
+    }
+
+    /**
+     * 处理 open_file：在 IDEA 编辑器中打开文件并定位到行（支持 path:line / path:line-start-end）。
+     * 解析链：绝对路径 → 相对项目根 → 文件名模糊匹配（FilenameIndex）。
+     */
+    private fun handleOpenFile(rawPath: String) {
+        if (rawPath.isBlank() || project.isDisposed) return
+        val linePattern = Regex("^(.*):(\\d+)(?:-(\\d+))?$")
+        var path = rawPath
+        var line = -1
+        var endLine = -1
+        linePattern.matchEntire(rawPath)?.let { m ->
+            val candidate = m.groupValues[1]
+            // 排除 Windows 盘符/时间戳式误判（如 C:\... 或 xxx:42:13）
+            if (candidate.isNotBlank() && !candidate.matches(Regex(".*:\\d+$"))) {
+                path = candidate
+                line = m.groupValues[2].toIntOrNull() ?: -1
+                endLine = m.groupValues[3].toIntOrNull() ?: -1
+            }
+        }
+        val vf = resolveFileForOpen(path)
+        if (vf == null) {
+            LOG.warn("[PiChatDiag] open_file 未找到: " + path)
+            callWeb("addToast", "无法打开文件：" + path, "error")
+            return
+        }
+        openInEditor(vf, line, endLine)
+    }
+
+    private fun resolveFileForOpen(path: String): VirtualFile? {
+        val direct = File(path)
+        if (direct.exists()) {
+            return LocalFileSystem.getInstance().findFileByIoFile(direct)
+        }
+        val basePath = project.basePath
+        if (basePath != null) {
+            val rel = File(basePath, path)
+            if (rel.exists()) {
+                return LocalFileSystem.getInstance().findFileByIoFile(rel)
+            }
+        }
+        // 文件名模糊匹配（IDEA 索引，需要 read action）
+        if (DumbService.isDumb(project)) return null
+        val fileName = path.substringAfterLast('/').substringAfterLast('\\')
+        if (fileName.isBlank()) return null
+        val suffix = path.replace('\\', '/')
+        val matches: Collection<VirtualFile> = ApplicationManager.getApplication().runReadAction(
+            Computable { FilenameIndex.getVirtualFilesByName(fileName, GlobalSearchScope.projectScope(project)) }
+        )
+        if (matches.isEmpty()) return null
+        matches.firstOrNull { it.path.replace('\\', '/').endsWith(suffix) }?.let { return it }
+        matches.firstOrNull { it.path.replace('\\', '/').contains(suffix) }?.let { return it }
+        matches.firstOrNull { it.path.contains("/src/") || it.path.contains("\\src\\") }?.let { return it }
+        return matches.first()
+    }
+
+    /** 在编辑器中打开文件，可选定位行号/选区。 */
+    private fun openInEditor(vf: VirtualFile, line: Int, endLine: Int) {
+        if (project.isDisposed || !vf.isValid) return
+        if (line <= 0) {
+            FileEditorManager.getInstance(project).openFile(vf, true)
+            return
+        }
+        val descriptor = OpenFileDescriptor(project, vf)
+        val editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, true)
+        if (editor == null) {
+            FileEditorManager.getInstance(project).openFile(vf, true)
+            return
+        }
+        val doc = editor.document
+        val lineCount = doc.lineCount
+        if (lineCount <= 0) return
+        val zeroLine = line.coerceIn(1, lineCount) - 1
+        val startOffset = doc.getLineStartOffset(zeroLine)
+        editor.caretModel.moveToOffset(startOffset)
+        if (endLine >= line) {
+            val zeroEnd = endLine.coerceIn(1, lineCount) - 1
+            editor.selectionModel.setSelection(startOffset, doc.getLineEndOffset(zeroEnd))
+        } else {
+            editor.selectionModel.removeSelection()
+        }
+        editor.scrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
+        editor.contentComponent.requestFocus()
+    }
+
+    /**
+     * 处理 load_subagent_session：从 tool 执行时保留的 details（subagent 工具的
+     * details.results[].messages）提取子代理的完整消息，转成前端 SubagentProcessDetails
+     * 可解析的格式（{type, raw:{content:[tool_use 块]}}）后回传。
+     */
+    private fun handleLoadSubagentSession(content: String) {
+        val params = try {
+            JsonParser.parseString(content).asJsonObject
+        } catch (_: Exception) {
+            return
+        }
+        val rawToolUseId = params.str("toolUseId") ?: params.str("agentId") ?: return
+        // 前端并行/链式可能带 ::idx 后缀，回退到纯 toolCallId 定位
+        val toolUseId = rawToolUseId.substringBefore("::")
+        onEdt {
+            val m = findToolMessage(toolUseId)
+            val details = m?.toolResultDetails
+            if (m == null || details == null || !details.isJsonObject) {
+                callWeb(
+                    "onSubagentHistoryLoaded",
+                    gson.toJson(mapOf(
+                        "success" to false,
+                        "toolUseId" to rawToolUseId,
+                        "error" to "未找到子代理执行记录"
+                    ))
+                )
+                return@onEdt
+            }
+
+            val detailObj = details.asJsonObject
+            val results = detailObj.get("results")?.takeIf { it.isJsonArray }?.asJsonArray
+            val frontendMessages = JsonArray()
+            if (results != null) {
+                for (r in results) {
+                    if (!r.isJsonObject) continue
+                    val rm = r.asJsonObject
+                    val msgs = rm.get("messages")?.takeIf { it.isJsonArray }?.asJsonArray ?: continue
+                    for (msg in msgs) {
+                        if (!msg.isJsonObject) continue
+                        val mm = msg.asJsonObject
+                        val role = mm.str("role")
+                        val content = mm.get("content")?.takeIf { it.isJsonArray }?.asJsonArray
+                        val converted = JsonObject().apply {
+                            addProperty("type", if (role == "assistant") "assistant" else "user")
+                        }
+                        val blocks = JsonArray()
+                        if (content != null) {
+                            for (b in content) {
+                                if (!b.isJsonObject) continue
+                                val block = b.asJsonObject
+                                when (block.str("type")) {
+                                    "toolCall" -> blocks.add(JsonObject().apply {
+                                        addProperty("type", "tool_use")
+                                        addProperty("id", block.str("id") ?: "tool-${blocks.size()}")
+                                        addProperty("name", block.str("name") ?: "tool")
+                                        val args = block.get("arguments")
+                                        if (args != null && args.isJsonObject) add("input", args)
+                                        else add("input", JsonObject())
+                                    })
+                                    // text 块作为最终输出展示（resultText），这里不逐块列出
+                                    else -> Unit
+                                }
+                            }
+                        }
+                        if (blocks.size() > 0) {
+                            converted.add("raw", JsonObject().apply { add("content", blocks) })
+                            frontendMessages.add(converted)
+                        }
+                    }
+                }
+            }
+
+            // 是否全部结束：results 均存在且 exitCode != -1
+            val completed = results == null || results.all { r ->
+                r.isJsonObject && (r.asJsonObject.get("exitCode")?.asInt ?: 0) != -1
+            }
+            val status = if (completed) "completed" else "running"
+
+            val payload = JsonObject().apply {
+                addProperty("success", true)
+                addProperty("toolUseId", rawToolUseId)
+                addProperty("status", status)
+                addProperty("completed", completed)
+                add("messages", frontendMessages)
+            }
+            callWeb("onSubagentHistoryLoaded", gson.toJson(payload))
+        }
     }
 
     private fun publishModels() {
@@ -560,6 +762,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             sessions.forEach { session ->
                 result.add(JsonObject().apply {
                     addProperty("sessionId", session.path)
+                    addProperty("id", session.id)
                     addProperty("title", session.title ?: session.name.removeSuffix(".jsonl"))
                     addProperty("messageCount", if (session.isCurrent) messages.size else 0)
                     addProperty("provider", "pi")
@@ -615,23 +818,23 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             }
         }
         if (isStreamingMsg.value && (streamingText.value.isNotBlank() || streamingThinking.value.isNotBlank())) {
-            result.add(assistantMessage(streamingText.value, streamingThinking.value, true))
+            result.add(assistantMessage(streamingText.value, streamingThinking.value, true, streamingAssistant?.getTimestamp() ?: System.currentTimeMillis()))
         }
     }
 
     private fun messageJson(message: ChatMessage): JsonObject = when (message.kind) {
-        ChatMessage.Kind.USER -> basicMessage("user", message.text)
-        ChatMessage.Kind.ASSISTANT -> assistantMessage(message.text, message.thinking, false)
-        ChatMessage.Kind.THINKING -> assistantMessage("", message.thinking.ifBlank { message.text }, false)
-        ChatMessage.Kind.SYSTEM -> basicMessage("notification", message.text)
-        ChatMessage.Kind.ERROR -> basicMessage("error", message.text)
+        ChatMessage.Kind.USER -> basicMessage("user", message.text, message.getTimestamp())
+        ChatMessage.Kind.ASSISTANT -> assistantMessage(message.text, message.thinking, false, message.getTimestamp())
+        ChatMessage.Kind.THINKING -> assistantMessage("", message.thinking.ifBlank { message.text }, false, message.getTimestamp())
+        ChatMessage.Kind.SYSTEM -> basicMessage("notification", message.text, message.getTimestamp())
+        ChatMessage.Kind.ERROR -> basicMessage("error", message.text, message.getTimestamp())
         ChatMessage.Kind.TOOL -> toolUseMessage(message)
     }
 
-    private fun basicMessage(type: String, text: String): JsonObject = JsonObject().apply {
+    private fun basicMessage(type: String, text: String, timestamp: Long): JsonObject = JsonObject().apply {
         addProperty("type", type)
         addProperty("content", text)
-        addProperty("timestamp", Instant.now().toString())
+        addProperty("timestamp", Instant.ofEpochMilli(timestamp).toString())
         add("raw", JsonObject().apply {
             add("content", JsonArray().apply {
                 add(JsonObject().apply { addProperty("type", "text"); addProperty("text", text) })
@@ -639,11 +842,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         })
     }
 
-    private fun assistantMessage(text: String, thinking: String, streaming: Boolean): JsonObject = JsonObject().apply {
+    private fun assistantMessage(text: String, thinking: String, streaming: Boolean, timestamp: Long): JsonObject = JsonObject().apply {
         addProperty("type", "assistant")
         addProperty("content", text)
         addProperty("isStreaming", streaming)
-        addProperty("timestamp", Instant.now().toString())
+        addProperty("timestamp", Instant.ofEpochMilli(timestamp).toString())
         add("raw", JsonObject().apply {
             add("message", JsonObject().apply {
                 add("content", JsonArray().apply {
@@ -663,7 +866,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private fun toolUseMessage(message: ChatMessage): JsonObject = JsonObject().apply {
         addProperty("type", "assistant")
         addProperty("content", "")
-        addProperty("timestamp", Instant.now().toString())
+        addProperty("timestamp", Instant.ofEpochMilli(message.getTimestamp()).toString())
         add("raw", JsonObject().apply {
             add("message", JsonObject().apply {
                 add("content", JsonArray().apply {
@@ -686,7 +889,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private fun toolResultMessage(message: ChatMessage): JsonObject = JsonObject().apply {
         addProperty("type", "user")
         addProperty("content", "[tool_result]")
-        addProperty("timestamp", Instant.now().toString())
+        addProperty("timestamp", Instant.ofEpochMilli(message.getTimestamp()).toString())
         add("raw", JsonObject().apply {
             add("content", JsonArray().apply {
                 add(JsonObject().apply {
@@ -696,6 +899,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     addProperty("is_error", message.toolStatus == "error")
                 })
             })
+            // 结构化详情放在 raw.toolUseResult（前端 extractResultMetadata / parseAgentToolMeta 读取）
+            message.toolResultDetails?.let { add("toolUseResult", it) }
         })
     }
 
@@ -733,7 +938,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         }
     }
 
-    private fun handleStateReady(data: JsonObject) {
+    private fun handleStateReady(data: JsonObject, loadHistory: Boolean = true) {
+        LOG.info("[PiChatDiag] handleStateReady: " + data)
         connected.value = true
         statusText.value = "● 已连接"
         val sessionFile = data.str("sessionFile")
@@ -745,7 +951,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         val level = data.str("thinkingLevel")
         loadModels(provider, id)
         loadThinkingLevels(if (level.isNotEmpty()) level else "")
-        loadHistory()
+        if (loadHistory) loadHistory()
         loadSessionList(sessionFile)
         loadSessionStats()
         publishCommands()
@@ -952,10 +1158,15 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     // ================= 数据加载 =================
 
     private fun loadModels(currentProvider: String, currentId: String) {
+        LOG.info("[PiChatDiag] loadModels(provider=" + currentProvider + ", id=" + currentId + ")")
         client.getAvailableModels().thenAccept { res ->
             onEdt {
-                if (res == null || !res.success() || res.data() == null || !res.data().has("models")) return@onEdt
+                if (res == null || !res.success() || res.data() == null || !res.data().has("models")) {
+                    LOG.warn("[PiChatDiag] get_available_models 失败: " + (if (res == null) "null" else res.toString()))
+                    return@onEdt
+                }
                 val arr = res.data().getAsJsonArray("models")
+                LOG.info("[PiChatDiag] get_available_models OK, count=" + arr.size())
                 val list = mutableListOf<ModelItem>()
                 for (el in arr) {
                     if (!el.isJsonObject) continue
@@ -1011,12 +1222,15 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         if (level.isNotEmpty() && thinkingLevels.contains(level)) currentThinking.value = level
     }
 
-    private fun loadHistory() {
+    private fun loadHistory(force: Boolean = false) {
         client.getMessages().thenAccept { res ->
             onEdt {
                 if (res == null || !res.success() || res.data() == null || !res.data().has("messages")) return@onEdt
-                if (messages.isNotEmpty()) return@onEdt
+                if (!force && messages.isNotEmpty()) return@onEdt
+                // force：切换会话后强制重载，先清掉临时 system 消息再加载目标历史
+                if (force) messages.clear()
                 val arr = res.data().getAsJsonArray("messages")
+                LOG.info("[PiChatDiag] loadHistory(force=" + force + ") messages=" + arr.size())
                 for (el in arr) {
                     if (!el.isJsonObject) continue
                     val m = el.asJsonObject
@@ -1031,8 +1245,17 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                                     if (!b.isJsonObject) continue
                                     val block = b.asJsonObject
                                     val t = block.str("type")
-                                    if (t == "text" && block.has("text")) am.appendText(block.get("text").asString)
-                                    else if (t == "thinking" && block.has("thinking")) am.appendThinking(block.get("thinking").asString)
+                                    if (t == "text" && block.has("text")) {
+                                        val text = block.get("text").asString
+                                        // magic-context 压缩重建会把 <thinking>/</thinking> 标签错位：
+                                        // open 标签残留进 thinking 内容，close 标签（如 `</thinking>`）残留进 text 块
+                                        // （可能是孤立块，也可能与真实文本混合）。统一剥离标签，剥离后为空的块忽略。
+                                        val cleaned = stripThinkingTags(text)
+                                        if (!cleaned.isBlank() && !isStrayThinkingTag(cleaned)) am.appendText(cleaned)
+                                    } else if (t == "thinking" && block.has("thinking")) {
+                                        // 剥离 thinking 内容里残留的 thinking 标签（<thinking>/<reasoning>/<thought> 等）
+                                        am.appendThinking(stripThinkingTags(block.get("thinking").asString))
+                                    }
                                 }
                             } else if (content != null && content.isJsonPrimitive) {
                                 am.appendText(content.asString)
@@ -1289,7 +1512,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private fun publishContextPresets() {
         if (!webUiReady) return
         val model = currentModel.value
-        val currentK = (model?.contextWindow?.div(1000))?.toInt() ?: 0
         var persistedK = -1
         try {
             val file = ctxPresetFile()
@@ -1303,6 +1525,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         } catch (e: Exception) {
             // 配置不可读则忽略
         }
+        // 当前生效挡位：优先用持久化配置（ctx-preset 扩展 session_start 已应用，状态栏 /400K 同源），
+        // 未设置过才回退模型原始 contextWindow（models.json 默认）。
+        val currentK = if (persistedK > 0) persistedK else (model?.contextWindow?.div(1000))?.toInt() ?: 0
         onEdt {
             callWeb("updateContextPresets", gson.toJson(JsonObject().apply {
                 addProperty("currentK", currentK)
@@ -1313,7 +1538,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         }
     }
 
-    /** 设置挡位：写 ctx-preset.json（扩展 session_start 时自动应用）→ 重启 pi 进程。 */
+    /** 设置挡位：与 TUI `/ctx <level> --p` 一致——运行时应用 + 持久化，无需重启进程。
+     *  ctx-preset 扩展通过 pi.registerProvider() 重新注册当前模型（覆盖 contextWindow）
+     *  立即生效，并把挡位写入 ~/.pi/agent/ctx-preset.json（下次 session_start 自动应用）。 */
     private fun handleSetContextPreset(content: String) {
         val level = content.trim().toIntOrNull()
         val tokens = when (level) {
@@ -1329,42 +1556,21 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             callWeb("addToast", "当前没有活动模型", "warning")
             return
         }
-        val key = "${model.provider}/${model.id}"
-        try {
-            val file = ctxPresetFile()
-            val cfg = if (Files.exists(file)) {
-                JsonParser.parseString(Files.readString(file)).asJsonObject
-            } else {
-                JsonObject()
-            }
-            val presets = if (cfg.has("presets") && cfg.get("presets").isJsonObject) {
-                cfg.getAsJsonObject("presets")
-            } else {
-                JsonObject().also { cfg.add("presets", it) }
-            }
-            presets.addProperty(key, tokens)
-            val tmp = file.resolveSibling(file.fileName.toString() + ".tmp")
-            Files.writeString(tmp, gson.toJson(cfg), StandardCharsets.UTF_8)
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING)
-            callWeb("addToast", "已设置 $key 上下文挡位 = ${level}k，正在重启会话…", "success")
-            restartPiSession()
-        } catch (e: Exception) {
-            callWeb("addToast", "设置失败: ${e.message}", "error")
+        if (!client.isRunning()) {
+            callWeb("addToast", "pi 未连接，无法设置挡位", "error")
+            return
         }
-    }
-
-    /** 单会话模式：关掉当前进程，重启并恢复当前会话（ctx 挡位在 session_start 时生效）。 */
-    private fun restartPiSession() {
-        val current = currentSessionFile.value
-        client.close()
-        val next = createClient(client.cwd)
-        if (current.isNotBlank()) pendingSessionSwitch[next] = current
-        client = next
-        clearMessages()
-        currentSessionFile.value = ""
-        connected.value = false
-        statusText.value = "● 连接中…"
-        startClient(next)
+        // 发送扩展命令 /ctx 400 --p：扩展立即 applyContextWindow（内存重注册）并持久化
+        client.prompt("/ctx $level --p")
+        callWeb("addToast", "已设置 ${model.provider}/${model.id} = ${level}k", "success")
+        // 扩展异步应用 + 写配置，稍后刷新前端挡位显示与状态栏
+        javax.swing.Timer(1500) {
+            publishContextPresets()
+            loadSessionStats()
+        }.apply {
+            isRepeats = false
+            start()
+        }
     }
 
     private fun textOf(content: JsonElement?): String {
@@ -1378,6 +1584,34 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             }
         }
         return sb.toString()
+    }
+
+    /**
+     * magic-context 压缩重建会把 thinking 标签错位：close 标签（`</thinking>`/` response` 等）
+     * 被孤立成 text 块。识别这种纯标签残留文本，避免污染消息正文。
+     */
+    private fun isStrayThinkingTag(text: String): Boolean {
+        val trimmed = text.trim()
+        return trimmed.isEmpty() ||
+            trimmed == "</thinking>" || trimmed == "<thinking>" ||
+            trimmed == "</reasoning>" || trimmed == "<reasoning>" ||
+            trimmed == "</thought>" || trimmed == "<thought>" ||
+            trimmed == " response" || trimmed == " thinking" ||
+            trimmed == "response"
+    }
+
+    /** 剥离 thinking 内容里残留的 thinking 标签（open/close，含 </think> 等变体）。 */
+    private fun stripThinkingTags(text: String): String {
+        var out = text
+        for (tag in listOf(
+            "<thinking>", "</thinking>", "<think>", "</think>",
+            "<reasoning>", "</reasoning>",
+            "<thought>", "</thought>",
+            "<analysis>", "</analysis>"
+        )) {
+            out = out.replace(tag, "")
+        }
+        return out
     }
 
     private fun JsonObject.str(key: String): String {
@@ -1439,10 +1673,16 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     override fun onToolUpdate(toolCallId: String, toolName: String, partialResult: JsonObject?) {
         onEdt {
             val m = findToolMessage(toolCallId)
-            if (m != null && partialResult != null && partialResult.has("content")) {
+            if (m == null || partialResult == null) return@onEdt
+            if (partialResult.has("content")) {
                 m.toolResult = textFromContent(partialResult.get("content"))
-                publishWebState()
             }
+            // 运行中的 subagent 也会通过 partialResult.details 推送增量进度，
+            // 同步更新以便展开时能实时看到部分子代理结果
+            if (partialResult.has("details")) {
+                m.toolResultDetails = partialResult.get("details")
+            }
+            publishWebState()
         }
     }
 
@@ -1452,6 +1692,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             m.toolStatus = if (isError) "error" else "done"
             if (result != null && result.has("content")) {
                 m.toolResult = textFromContent(result.get("content"))
+            }
+            // 保留结构化详情（如 subagent 工具的 details.results[].messages），供 load_subagent_session 读取
+            if (result != null && result.has("details")) {
+                m.toolResultDetails = result.get("details")
             }
             publishWebState()
         }
@@ -2351,4 +2595,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             )
         }
     }
+}
+
+/** 从会话文件名解析 pi 的 UUID id（形如 2026-08-21T19-24-10-173Z_01a025c7-...jsonl → 01a025c7-...）。 */
+private fun parseSessionId(name: String): String {
+    val m = Regex("_([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\.jsonl$").find(name)
+    return m?.groupValues?.get(1) ?: name.removeSuffix(".jsonl")
 }

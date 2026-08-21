@@ -109,13 +109,16 @@ export interface CodexHistoryPageInfo {
 export interface TodoItem {
   id?: string;
   content: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  /** magic-context todowrite 还支持 cancelled（计划被显式取消） */
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   /** IDs of tasks that block this task (numeric string format from TaskCreate/TaskUpdate, e.g., "1", "2") */
   blockedBy?: string[];
 }
 
 export interface HistorySessionSummary {
   sessionId: string;
+  /** pi 会话 UUID id（可用于 /resume <id>），由后端从文件名解析。 */
+  id?: string;
   title: string;
   messageCount: number;
   lastTimestamp?: string;

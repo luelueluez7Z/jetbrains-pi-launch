@@ -16,21 +16,21 @@ function kindOf(text: string): StatusKind {
 /** 余额段识别：💰 / 额度 / 余额 / 货币符号 */
 const BALANCE_RE = /💰|余额|额度|¥|\$|元/;
 
-/** 统计段细分：context（上下文占用）/ cache / tokens */
+/** 统计段细分：context（上下文占用）/ cache / tokens —— 仅颜色区分，无 emoji */
 interface StatsPart {
   text: string;
   cls?: string;
-  icon?: string;
 }
 
 function classifyStats(part: string): StatsPart {
-  if (/cache/i.test(part)) return { text: part, cls: 'pi-status-cache', icon: '⚡' };
+  if (/cache/i.test(part)) return { text: part, cls: 'pi-status-cache' };
   if (/[↑↓]/.test(part)) return { text: part, cls: 'pi-status-tokens' };
-  if (/\d+\/\d+/.test(part)) return { text: part, cls: 'pi-status-context', icon: '📊' };
+  // 上下文占用：197.5K/400.0K (49%)、12.3K/200K (6%)、0/200.0K (0%) —— 数字可选小数，可带 K/k 单位
+  if (/\d+(?:\.\d+)?[Kk]?\s*\/\s*\d+(?:\.\d+)?[Kk]?/.test(part)) return { text: part, cls: 'pi-status-context' };
   return { text: part };
 }
 
-/** 分段渲染状态栏：状态主文本（随状态变色）· 统计（emoji + 分层色）· 余额（金色高亮） */
+/** 分段渲染状态栏：状态主文本（随状态变色）· 统计（仅颜色分层）· 余额（金色，不加粗） */
 export function PiStatusBar({ status }: PiStatusBarProps) {
   const raw = (status || 'ready').replace(/^●\s*/, '');
   const kind = kindOf(raw);
@@ -40,7 +40,7 @@ export function PiStatusBar({ status }: PiStatusBarProps) {
   const parts = raw.split(' · ').filter(Boolean);
   const [phase, ...rest] = parts;
   const balanceIdx = rest.findIndex((s) => BALANCE_RE.test(s));
-  const balance = balanceIdx >= 0 ? rest[balanceIdx] : null;
+  const balance = balanceIdx >= 0 ? rest[balanceIdx].replace(/💰/g, '').trim() : null;
   const stats = (balanceIdx >= 0 ? rest.filter((_, i) => i !== balanceIdx) : rest).map(classifyStats);
 
   return (
@@ -54,7 +54,6 @@ export function PiStatusBar({ status }: PiStatusBarProps) {
       {stats.map((s, i) => (
         <span key={i} className={`pi-status-bar-text pi-status-stats${s.cls ? ` ${s.cls}` : ''}`}>
           {' · '}
-          {s.icon && <span className="pi-status-stat-icon">{s.icon}</span>}
           {s.text}
         </span>
       ))}
