@@ -103,6 +103,13 @@ export function registerWindowCallbacks(
 
   window.onSubagentHistoryChunk = appendSubagentHistoryChunk;
 
+  // Agent turn truly completed (Java onAgentSettled → callWeb('onAgentCompleted')).
+  // The frontend drains the followUp message queue here because loading/streamingActive
+  // both flicker during tool execution and are unreliable for "turn finished" detection.
+  window.onAgentCompleted = () => {
+    options.onAgentCompleted?.();
+  };
+
   window.onSubagentHistoryLoaded = (json: string) => {
     try {
       if (!options.setSubagentHistories) return;

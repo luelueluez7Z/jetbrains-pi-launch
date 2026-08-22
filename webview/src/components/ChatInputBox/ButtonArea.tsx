@@ -5,6 +5,7 @@ import { CodexFastModeSelect, ConfigSelect, ContextPresetSelect, ModelSelect, Mo
 import { useCliModels } from '../../hooks/providers/useCliModels';
 import { useToolbarSelectorCompact } from './hooks/useToolbarSelectorCompact';
 import { resolveProviderModels } from './resolveProviderModels';
+import { sendBridgeEvent } from '../../utils/bridge';
 
 /**
  * ButtonArea - Bottom toolbar component
@@ -42,6 +43,10 @@ export const ButtonArea = ({
 }: ButtonAreaProps) => {
   const { t } = useTranslation();
   const isPi = currentProvider === 'pi';
+  // 手动压缩会话上下文（等价 TUI 的 /compact）
+  const handleCompactClick = useCallback(() => {
+    sendBridgeEvent('compact_session', '');
+  }, []);
   // const fileInputRef = useRef<HTMLInputElement>(null);
   const { cliModels, cliModelsLoading, cliModelsError, cliDefaultModel, cliCatalogHasEntries, refreshCliModels } = useCliModels(currentProvider);
 
@@ -205,6 +210,18 @@ export const ButtonArea = ({
         />
         <ReasoningSelect value={reasoningEffort} onChange={handleReasoningChange} selectedModel={selectedModel} currentProvider={currentProvider} piThinkingLevels={piThinkingLevels} />
         {isPi && <ContextPresetSelect />}
+        {isPi && (
+          <button
+            className="has-tooltip"
+            onClick={handleCompactClick}
+            disabled={disabled || isLoading}
+            data-tooltip="压缩上下文 (等价 /compact)"
+            title="压缩上下文"
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: 'inherit', display: 'inline-flex', alignItems: 'center' }}
+          >
+            <span className="codicon codicon-archive" />
+          </button>
+        )}
         {!isPi && currentProvider === 'codex' && (
           <CodexFastModeSelect value={codexFastMode} onChange={handleCodexFastModeChange} />
         )}

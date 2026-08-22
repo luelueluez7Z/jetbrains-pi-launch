@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { Attachment } from '../types.js';
 import type { Dispatch, SetStateAction } from 'react';
+import type { SendBehavior } from '../../../utils/sendBehavior.js';
 
 interface CompletionLike {
   close: () => void;
@@ -27,7 +28,7 @@ export interface UseSubmitHandlerOptions {
   agentCompletion: CompletionLike;
   dollarCommandCompletion: CompletionLike;
   recordInputHistory: (text: string) => void;
-  onSubmit?: (content: string, attachmentsToSend?: Attachment[]) => void;
+  onSubmit?: (content: string, attachmentsToSend?: Attachment[], behavior?: SendBehavior) => void;
   onInstallSdk?: () => void;
   addToast?: (message: string, type: 'info' | 'warning' | 'error' | 'success') => void;
   t: (key: string, options?: Record<string, unknown>) => string;
@@ -64,78 +65,81 @@ export function useSubmitHandler({
   addToast,
   t,
 }: UseSubmitHandlerOptions) {
-  return useCallback(() => {
-    // Force fresh DOM read to avoid stale cache (e.g., after paste)
-    invalidateCache();
-    const content = getTextContent();
-    const cleanContent = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  return useCallback(
+    (behavior?: SendBehavior) => {
+      // Force fresh DOM read to avoid stale cache (e.g., after paste)
+      invalidateCache();
+      const content = getTextContent();
+      const cleanContent = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 
-    if (sdkStatusLoading) {
-      addToast?.(t('chat.sdkStatusLoading'), 'info');
-      return;
-    }
+      if (sdkStatusLoading) {
+        addToast?.(t('chat.sdkStatusLoading'), 'info');
+        return;
+      }
 
-    if (!sdkInstalled) {
-      addToast?.(
-        t('chat.sdkNotInstalled', {
-          provider: currentProvider === 'codex' ? 'Codex' : 'Claude Code',
-        }) +
-          ' ' +
-          t('chat.goInstallSdk'),
-        'warning'
-      );
-      onInstallSdk?.();
-      return;
-    }
+      if (!sdkInstalled) {
+        addToast?.(
+          t('chat.sdkNotInstalled', {
+            provider: currentProvider === 'codex' ? 'Codex' : 'Claude Code',
+          }) +
+            ' ' +
+            t('chat.goInstallSdk'),
+          'warning'
+        );
+        onInstallSdk?.();
+        return;
+      }
 
-    if (!cleanContent && attachments.length === 0) return;
+      if (!cleanContent && attachments.length === 0) return;
 
-    // Close completions
-    fileCompletion.close();
-    commandCompletion.close();
-    agentCompletion.close();
-    dollarCommandCompletion.close();
+      // Close completions
+      fileCompletion.close();
+      commandCompletion.close();
+      agentCompletion.close();
+      dollarCommandCompletion.close();
 
-    // Record input history
-    recordInputHistory(content);
+      // Record input history
+      recordInputHistory(content);
 
-    const attachmentsToSend = attachments.length > 0 ? [...attachments] : undefined;
+      const attachmentsToSend = attachments.length > 0 ? [...attachments] : undefined;
 
-    // Cancel any pending debounced input callbacks before clearing
-    // This prevents stale values from refilling the input after submit
-    cancelPendingInput();
-    clearInput();
-    if (externalAttachments === undefined) {
-      setInternalAttachments([]);
-      // Clear attachments draft from localStorage
-      clearAttachmentsDraft?.();
-    }
+      // Cancel any pending debounced input callbacks before clearing
+      // This prevents stale values from refilling the input after submit
+      cancelPendingInput();
+      clearInput();
+      if (externalAttachments === undefined) {
+        setInternalAttachments([]);
+        // Clear attachments draft from localStorage
+        clearAttachmentsDraft?.();
+      }
 
-    // Call onSubmit even when loading - let parent handle queueing
-    setTimeout(() => {
-      onSubmit?.(content, attachmentsToSend);
-    }, 10);
-  }, [
-    getTextContent,
-    invalidateCache,
-    attachments,
-    isLoading,
-    sdkStatusLoading,
-    sdkInstalled,
-    currentProvider,
-    clearInput,
-    cancelPendingInput,
-    externalAttachments,
-    setInternalAttachments,
-    clearAttachmentsDraft,
-    fileCompletion,
-    commandCompletion,
-    agentCompletion,
-    dollarCommandCompletion,
-    recordInputHistory,
-    onSubmit,
-    onInstallSdk,
-    addToast,
-    t,
-  ]);
+      // Call onSubmit even when loading - let parent handle queueing
+      setTimeout(() => {
+        onSubmit?.(content, attachmentsToSend, behavior);
+      }, 10);
+    },
+    [
+      getTextContent,
+      invalidateCache,
+      attachments,
+      isLoading,
+      sdkStatusLoading,
+      sdkInstalled,
+      currentProvider,
+      clearInput,
+      cancelPendingInput,
+      externalAttachments,
+      setInternalAttachments,
+      clearAttachmentsDraft,
+      fileCompletion,
+      commandCompletion,
+      agentCompletion,
+      dollarCommandCompletion,
+      recordInputHistory,
+      onSubmit,
+      onInstallSdk,
+      addToast,
+      t,
+    ]
+  );
 }

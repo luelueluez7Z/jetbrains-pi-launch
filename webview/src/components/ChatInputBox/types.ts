@@ -3,6 +3,8 @@
  * Feature: 004-refactor-input-box
  */
 
+import type { SendBehavior, SendBehaviorMode } from '../../utils/sendBehavior.js';
+
 // ============================================================
 // Core Entity Types
 // ============================================================
@@ -693,8 +695,8 @@ export interface ChatInputBoxProps {
   onRemoveCodeSnippet?: (id: string) => void;
 
   // Event callbacks
-  /** Submit message */
-  onSubmit?: (content: string, attachments?: Attachment[]) => void;
+  /** Submit message（behavior：流式中的发送语义，steer=打断引导 / followUp=排队后续） */
+  onSubmit?: (content: string, attachments?: Attachment[], behavior?: SendBehavior) => void;
   /** Stop generation */
   onStop?: () => void;
   /** Input change */
@@ -730,6 +732,9 @@ export interface ChatInputBoxProps {
 
   /** Send shortcut setting: 'enter' = Enter sends | 'cmdEnter' = Cmd/Ctrl+Enter sends */
   sendShortcut?: 'enter' | 'cmdEnter';
+
+  /** 流式发送键位模式：steerOnEnter = 回车引导/Tab 后续；followUpOnEnter = 回车后续/Tab 引导 */
+  sendBehaviorMode?: SendBehaviorMode;
 
   /** Currently selected agent */
   selectedAgent?: SelectedAgent | null;

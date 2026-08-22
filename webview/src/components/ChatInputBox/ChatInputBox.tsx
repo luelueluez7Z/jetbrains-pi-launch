@@ -109,6 +109,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       streamingEnabled,
       onStreamingEnabledChange,
       sendShortcut = 'enter',
+      sendBehaviorMode = 'steerOnEnter',
       selectedAgent,
       onAgentSelect,
       onOpenAgentSettings,
@@ -530,6 +531,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       } : undefined,
       completionSelectedRef,
       submittedOnEnterRef,
+      sendBehaviorMode,
       handleSubmit,
     });
 

@@ -221,6 +221,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             override fun onAgentEnd(messages: JsonArray?, willRetry: Boolean) = active { this@ChatPanel.onAgentEnd(messages, willRetry) }
             override fun onAgentSettled() = active { this@ChatPanel.onAgentSettled() }
             override fun onMessageUpdate(update: JsonObject) = active { this@ChatPanel.onMessageUpdate(update) }
+            override fun onMessageEnd(message: JsonObject) = active { this@ChatPanel.onMessageEnd(message) }
             override fun onToolStart(toolCallId: String, toolName: String, args: JsonObject?) = active { this@ChatPanel.onToolStart(toolCallId, toolName, args) }
             override fun onToolUpdate(toolCallId: String, toolName: String, partialResult: JsonObject?) = active { this@ChatPanel.onToolUpdate(toolCallId, toolName, partialResult) }
             override fun onToolEnd(toolCallId: String, toolName: String, isError: Boolean, result: JsonObject?) = active { this@ChatPanel.onToolEnd(toolCallId, toolName, isError, result) }
@@ -374,7 +375,19 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 } catch (_: Exception) {
                     content
                 }
-                sendMessage(text)
+                // 发送行为：steer = 打断引导（默认）；followUp = 排队等待当前对话完成
+                val behavior = try {
+                    JsonParser.parseString(content).asJsonObject.str("behavior").ifEmpty { "steer" }
+                } catch (_: Exception) {
+                    "steer"
+                }
+                // 图片附件：前端粘贴/拖拽的图片（base64），转发给 pi（RPC images 协议）
+                val images = try {
+                    parseImageAttachments(JsonParser.parseString(content).asJsonObject.get("attachments"))
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                sendMessage(text, behavior, images)
             }
             "interrupt_session" -> abort()
             "create_new_session" -> confirmNewSession()
@@ -415,6 +428,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             "show_diff" -> handleShowDiff(content)
             "get_context_presets" -> publishContextPresets()
             "set_context_preset" -> handleSetContextPreset(content)
+            "compact_session" -> handleCompactSession()
             "export_session", "toggle_favorite",
             "convert_to_cli_session", "create_new_tab" ->
                 callWeb("addToast", "该交互将在下一阶段接入 Pi", "info")
@@ -1057,7 +1071,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     // ================= 动作 =================
 
-    private fun sendMessage(textOverride: String? = null) {
+    private fun sendMessage(textOverride: String? = null, behavior: String = "steer", images: List<JsonObject> = emptyList()) {
         val text = (textOverride ?: inputText.value.text).trim()
         if (text.isEmpty() || !client.isRunning()) return
         System.out.println("[PiChat] send: " + text.take(50))
@@ -1066,9 +1080,30 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         scrollRequest.value++
         publishWebState()
         if (streaming) {
-            client.promptSteer(text)
+            // 对话进行中：steer 打断引导；followUp 排队等待当前对话完成
+            if (behavior == "followUp") {
+                client.followUp(text, images)
+            } else {
+                client.promptSteer(text, images)
+            }
         } else {
-            client.prompt(text)
+            client.prompt(text, images)
+        }
+    }
+
+    /** 把前端 attachments（[{fileName, mediaType, data(base64)}]）转成 pi RPC images（[{type,data,mimeType}]）。 */
+    private fun parseImageAttachments(attachments: JsonElement?): List<JsonObject> {
+        if (attachments == null || !attachments.isJsonArray) return emptyList()
+        return attachments.asJsonArray.mapNotNull { el ->
+            if (!el.isJsonObject) return@mapNotNull null
+            val o = el.asJsonObject
+            val data = o.str("data")
+            if (data.isBlank()) return@mapNotNull null
+            JsonObject().apply {
+                addProperty("type", "image")
+                addProperty("data", data)
+                addProperty("mimeType", if (o.str("mediaType").isBlank()) "image/png" else o.str("mediaType"))
+            }
         }
     }
 
@@ -1306,6 +1341,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 onEdt {
                     if (!force && messages.isNotEmpty()) return@onEdt
                     if (force) messages.clear()
+                    // 重载会话时丢弃未落定的流式状态（可能来自上一会话/中断的流式）
+                    resetStreamingState()
                     messages.addAll(parsed)
                     if (messages.isNotEmpty()) {
                         addSystem("已恢复会话，共 ${messages.size} 条历史消息（与终端 pi 共享）")
@@ -1320,6 +1357,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 if (res == null || !res.success() || res.data() == null || !res.data().has("messages")) return@onEdt
                 if (!force && messages.isNotEmpty()) return@onEdt
                 if (force) messages.clear()
+                resetStreamingState()
                 val arr = res.data().getAsJsonArray("messages")
                 LOG.info("[PiChatDiag] loadHistory(force=" + force + ") messages=" + arr.size())
                 val parsed = mutableListOf<ChatMessage>()
@@ -1334,6 +1372,14 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 }
             }
         }
+    }
+
+    /** 重置流式状态（loadHistory 重载/切换会话时调用，避免残留的 streaming 引用污染新会话）。 */
+    private fun resetStreamingState() {
+        streamingAssistant = null
+        isStreamingMsg.value = false
+        streamingText.value = ""
+        streamingThinking.value = ""
     }
 
     /** 直接读会话 jsonl 文件解析历史消息（与终端 pi 共享，能看到外部写入的最新内容）。 */
@@ -1750,6 +1796,16 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         }
     }
 
+    /** 手动压缩会话上下文：发送 pi 内置 /compact 命令（等价 TUI 的 /compact）。 */
+    private fun handleCompactSession() {
+        if (!client.isRunning()) {
+            callWeb("addToast", "pi 未连接，无法压缩", "error")
+            return
+        }
+        client.prompt("/compact")
+        callWeb("addToast", "正在压缩上下文…", "info")
+    }
+
     /** 从 ctx-preset 扩展源码读取挡位表（PRESETS 的键，单位 K），动态跟随用户配置（如新增 512）。
      *  路径 ~/.pi/agent/extensions/ctx-preset/index.ts，匹配 `"200": 200_000` 形式的纯数字键。 */
     private fun readCtxPresetLevels(): List<Int> {
@@ -2029,6 +2085,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         isStreamingMsg.value = false
         streamingText.value = ""
         streamingThinking.value = ""
+        // 落定后立即刷新 UI（否则要等到下一个事件才推送，前端会短暂停留在流式状态）
+        publishWebState()
     }
 
     /** 从 agent_end 的完整消息列表中提取最后一条有内容的 assistant 消息。 */
@@ -2063,6 +2121,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             busy.value = false
             refreshStatus()
             publishWebState()
+            // 通知前端 agent 回合真正完成（followUp 排队消息 drain 的可靠信号）
+            callWeb("onAgentCompleted")
         }
     }
 

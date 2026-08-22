@@ -87,8 +87,6 @@ describe('HistoryView multi-select', () => {
         onLoadSession={onLoadSession}
         onDeleteSession={onDeleteSession}
         onDeleteSessions={onDeleteSessions}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
         onUpdateTitle={vi.fn()}
         onConvertToCliSession={vi.fn()}
       />,
@@ -136,8 +134,6 @@ describe('HistoryView conversion', () => {
         onLoadSession={onLoadSession}
         onDeleteSession={vi.fn()}
         onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
         onUpdateTitle={vi.fn()}
         onConvertToCliSession={onConvertToCliSession}
       />,
@@ -173,8 +169,6 @@ describe('HistoryView conversion', () => {
         onLoadSession={vi.fn()}
         onDeleteSession={vi.fn()}
         onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
         onUpdateTitle={vi.fn()}
         onConvertToCliSession={vi.fn()}
       />,
@@ -199,8 +193,6 @@ describe('HistoryView conversion', () => {
         onLoadSession={vi.fn()}
         onDeleteSession={vi.fn()}
         onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
         onUpdateTitle={vi.fn()}
         onConvertToCliSession={vi.fn()}
       />,
@@ -217,8 +209,6 @@ describe('HistoryView conversion', () => {
         onLoadSession={vi.fn()}
         onDeleteSession={vi.fn()}
         onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
         onUpdateTitle={vi.fn()}
         onConvertToCliSession={vi.fn()}
       />,
@@ -240,8 +230,6 @@ describe('HistoryView conversion', () => {
         onLoadSession={vi.fn()}
         onDeleteSession={vi.fn()}
         onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
         onUpdateTitle={vi.fn()}
         onConvertToCliSession={vi.fn()}
       />,

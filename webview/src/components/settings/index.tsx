@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react';
+import {
+  readSendBehaviorMode,
+  writeSendBehaviorMode,
+  type SendBehaviorMode,
+} from '../../utils/sendBehavior';
 
 interface SettingsViewProps {
   onClose: () => void;
   initialTab?: string;
+  /** 流式发送行为变更时通知 App（同步当前会话的键盘行为） */
+  onSendBehaviorModeChange?: (mode: SendBehaviorMode) => void;
 }
 
 const THEME_OPTIONS = [
@@ -21,6 +28,12 @@ const FONT_LEVELS = [
 ];
 
 const FONT_SCALE: Record<number, number> = { 1: 0.8, 2: 0.9, 3: 1.0, 4: 1.1, 5: 1.2, 6: 1.4 };
+
+/** 流式发送键位选项（模型对话进行中时回车/Tab 的语义） */
+const SEND_BEHAVIOR_OPTIONS: { value: SendBehaviorMode; label: string; hint: string }[] = [
+  { value: 'steerOnEnter', label: '回车引导 / Tab 后续', hint: '回车打断并引导模型，Tab 排队等待当前对话完成（默认）' },
+  { value: 'followUpOnEnter', label: '回车后续 / Tab 引导', hint: '回车排队等待当前对话完成，Tab 打断并引导模型' },
+];
 
 function getInitialTheme(): string {
   const saved = localStorage.getItem('theme');
@@ -45,10 +58,11 @@ function applyFontLevel(level: number) {
   document.documentElement.style.setProperty('--font-scale', String(FONT_SCALE[level] ?? 0.9));
 }
 
-/** 极简设置页：仅保留主题与字体大小。 */
-const SettingsView = ({ onClose }: SettingsViewProps) => {
+/** 极简设置页：主题、字体大小、流式发送行为。 */
+const SettingsView = ({ onClose, onSendBehaviorModeChange }: SettingsViewProps) => {
   const [theme, setTheme] = useState(getInitialTheme);
   const [fontLevel, setFontLevel] = useState(getInitialFontLevel);
+  const [sendBehaviorMode, setSendBehaviorMode] = useState<SendBehaviorMode>(readSendBehaviorMode);
 
   useEffect(() => {
     applyTheme(theme);
@@ -66,6 +80,12 @@ const SettingsView = ({ onClose }: SettingsViewProps) => {
   const handleFontChange = (level: number) => {
     setFontLevel(level);
     localStorage.setItem('fontSizeLevel', String(level));
+  };
+
+  const handleSendBehaviorChange = (mode: SendBehaviorMode) => {
+    setSendBehaviorMode(mode);
+    writeSendBehaviorMode(mode);
+    onSendBehaviorModeChange?.(mode);
   };
 
   return (
@@ -135,6 +155,32 @@ const SettingsView = ({ onClose }: SettingsViewProps) => {
                 }}
               >
                 {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 流式发送行为（对话进行中回车/Tab 的语义） */}
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>流式发送行为</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {SEND_BEHAVIOR_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                onClick={() => handleSendBehaviorChange(o.value)}
+                style={{
+                  textAlign: 'left',
+                  padding: '8px 14px',
+                  borderRadius: 6,
+                  border: `1px solid ${sendBehaviorMode === o.value ? 'var(--accent-primary, #4b8bf5)' : 'var(--border-secondary, rgba(127,127,127,0.35))'}`,
+                  background: sendBehaviorMode === o.value ? 'color-mix(in srgb, var(--accent-primary, #4b8bf5) 18%, transparent)' : 'transparent',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: 600 }}>{o.label}</div>
+                <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>{o.hint}</div>
               </button>
             ))}
           </div>

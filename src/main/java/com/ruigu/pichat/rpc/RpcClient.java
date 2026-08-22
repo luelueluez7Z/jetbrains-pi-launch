@@ -317,17 +317,29 @@ public class RpcClient {
     // ================= 常用命令 =================
 
     public CompletableFuture<RpcResponse> prompt(String message) {
+        return prompt(message, null);
+    }
+
+    /** prompt 附带图片（pi RPC 协议：images = [{type:"image", data: base64, mimeType}]）。 */
+    public CompletableFuture<RpcResponse> prompt(String message, List<JsonObject> images) {
         return send(cmd -> {
             cmd.addProperty("type", "prompt");
             cmd.addProperty("message", message);
+            addImages(cmd, images);
         });
     }
 
     public CompletableFuture<RpcResponse> promptSteer(String message) {
+        return promptSteer(message, null);
+    }
+
+    /** prompt 打断引导 + 图片。 */
+    public CompletableFuture<RpcResponse> promptSteer(String message, List<JsonObject> images) {
         return send(cmd -> {
             cmd.addProperty("type", "prompt");
             cmd.addProperty("message", message);
             cmd.addProperty("streamingBehavior", "steer");
+            addImages(cmd, images);
         });
     }
 
@@ -339,10 +351,26 @@ public class RpcClient {
     }
 
     public CompletableFuture<RpcResponse> followUp(String message) {
+        return followUp(message, null);
+    }
+
+    /** followUp（排队等待当前对话完成）+ 图片。 */
+    public CompletableFuture<RpcResponse> followUp(String message, List<JsonObject> images) {
         return send(cmd -> {
             cmd.addProperty("type", "follow_up");
             cmd.addProperty("message", message);
+            addImages(cmd, images);
         });
+    }
+
+    /** 把图片列表（{type:image, data: base64, mimeType}）写入命令；为空则不加字段。 */
+    private void addImages(JsonObject cmd, List<JsonObject> images) {
+        if (images == null || images.isEmpty()) return;
+        JsonArray arr = new JsonArray();
+        for (JsonObject img : images) {
+            if (img != null && img.has("data")) arr.add(img);
+        }
+        if (arr.size() > 0) cmd.add("images", arr);
     }
 
     public CompletableFuture<RpcResponse> abort() {

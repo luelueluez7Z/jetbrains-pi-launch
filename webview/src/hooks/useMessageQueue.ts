@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Attachment } from '../components/ChatInputBox/types';
 
 export interface QueuedMessage {
@@ -9,8 +9,6 @@ export interface QueuedMessage {
 }
 
 export interface UseMessageQueueOptions {
-  /** Whether AI is currently processing */
-  isLoading: boolean;
   /** Callback to execute a message */
   onExecute: (content: string, attachments?: Attachment[]) => void;
 }
@@ -26,18 +24,18 @@ export interface UseMessageQueueReturn {
   clearQueue: () => void;
   /** Whether queue has items */
   hasQueuedMessages: boolean;
+  /** 手动取出并执行下一条（在 agent 回合完成/初始化结束时由调用方触发） */
+  drainOne: () => void;
 }
 
 /**
  * Hook for managing message queue
- * Automatically executes next message when loading completes
+ *
+ * 不自动监听 isLoading（该状态在工具执行间隙会短暂抖动，不可靠）——
+ * 由调用方在明确的"回合完成"信号（Java onAgentCompleted）或初始化结束时调用 drainOne。
  */
-export function useMessageQueue({
-  isLoading,
-  onExecute,
-}: UseMessageQueueOptions): UseMessageQueueReturn {
+export function useMessageQueue({ onExecute }: UseMessageQueueOptions): UseMessageQueueReturn {
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
-  const prevLoadingRef = useRef(isLoading);
   const isExecutingFromQueueRef = useRef(false);
 
   // Generate unique ID
@@ -66,27 +64,21 @@ export function useMessageQueue({
     setQueue([]);
   }, []);
 
-  // Auto-execute next message when loading completes
-  useEffect(() => {
-    // Detect transition from loading to not loading
-    const wasLoading = prevLoadingRef.current;
-    prevLoadingRef.current = isLoading;
-
-    // If just finished loading and queue has items, execute next
-    if (wasLoading && !isLoading && !isExecutingFromQueueRef.current && queue.length > 0) {
-      const nextMessage = queue[0];
+  // Manually execute the next queued message (if any). Guarded against re-entry.
+  const drainOne = useCallback(() => {
+    if (isExecutingFromQueueRef.current) return;
+    setQueue(prev => {
+      if (prev.length === 0) return prev;
+      const [next, ...rest] = prev;
       isExecutingFromQueueRef.current = true;
-
-      // Remove from queue first
-      setQueue(prev => prev.slice(1));
-
-      // Execute with small delay to ensure state updates
+      // Execute with small delay to ensure state updates settle
       setTimeout(() => {
-        onExecute(nextMessage.content, nextMessage.attachments);
+        onExecute(next.content, next.attachments);
         isExecutingFromQueueRef.current = false;
       }, 50);
-    }
-  }, [isLoading, queue, onExecute]);
+      return rest;
+    });
+  }, [onExecute]);
 
   return {
     queue,
@@ -94,5 +86,6 @@ export function useMessageQueue({
     dequeue,
     clearQueue,
     hasQueuedMessages: queue.length > 0,
+    drainOne,
   };
 }

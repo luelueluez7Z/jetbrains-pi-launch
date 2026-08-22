@@ -100,6 +100,8 @@ interface Window {
    */
   addHistoryMessage?: (message: any) => void;
   onSubagentHistoryChunk?: (transferId: string, chunk: string, isFinal: string | boolean) => void;
+  /** Agent 回合真正完成（Java onAgentSettled → callWeb('onAgentCompleted')）——followUp 队列 drain 信号 */
+  onAgentCompleted?: () => void;
   beginCodexHistoryPage?: (json: string) => void;
   appendCodexHistoryPageBatch?: (pageId: string, json: string) => void;
   appendCodexHistoryPageChunk?: (

@@ -22,6 +22,7 @@ import type { ClaudeMessage, ToolResultBlock } from '../types';
 import type { useMessageProcessing, useModelProviderState, useMessageQueue } from '../hooks';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
 import { reconcileMessageKeys, type MessageKeySnapshot } from '../utils/messageUtils';
+import type { SendBehavior, SendBehaviorMode } from '../utils/sendBehavior';
 
 type SubagentHistoryMap = ReturnType<typeof useMessages>['subagentHistories'];
 type ProviderState = ReturnType<typeof useModelProviderState>;
@@ -44,9 +45,11 @@ export interface ChatScreenProps {
   inputAreaRef: RefObject<HTMLDivElement | null>;
 
   // Submit / interrupt / nav
-  onSubmit: (content: string, attachments?: Attachment[]) => void;
+  onSubmit: (content: string, attachments?: Attachment[], behavior?: SendBehavior) => void;
   onInterrupt: () => void;
   onProviderSelect: (providerId: string) => void;
+  /** 流式发送键位模式（透传给输入框，决定回车/Tab 语义） */
+  sendBehaviorMode?: SendBehaviorMode;
 
   // Model / provider state (slice from useModelProviderState)
   currentProvider: ProviderState['currentProvider'];
@@ -100,6 +103,7 @@ export const ChatScreen = ({
   subagentHistoryCtxValue, sessionIdCtxValue,
   chatInputRef, messagesContainerRef, messagesEndRef, inputAreaRef,
   onSubmit, onInterrupt, onProviderSelect,
+  sendBehaviorMode,
   currentProvider, selectedModel, permissionMode, selectedAgent,
   sdkStatusLoading, sdkStatusError, onRetrySdkStatus, currentSdkInstalled,
   activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
@@ -132,8 +136,8 @@ export const ChatScreen = ({
     addToast,
   } = useUIState();
 
-  const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
-    onSubmit(content, attachments);
+  const handleSubmit = useCallback((content: string, attachments?: Attachment[], behavior?: SendBehavior) => {
+    onSubmit(content, attachments, behavior);
   }, [onSubmit]);
 
   return (
@@ -215,6 +219,7 @@ export const ChatScreen = ({
           streamingEnabled={streamingEnabledSetting}
           onStreamingEnabledChange={onStreamingEnabledChange}
           sendShortcut={sendShortcut}
+          sendBehaviorMode={sendBehaviorMode}
           selectedAgent={selectedAgent}
           onAgentSelect={onAgentSelect}
           activeFile={contextInfo?.file}

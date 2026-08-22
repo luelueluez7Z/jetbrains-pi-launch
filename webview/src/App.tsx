@@ -24,6 +24,12 @@ import {
   PLAN_COMMANDS,
 } from './hooks/useMessageSender';
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
+import {
+  readSendBehaviorMode,
+  writeSendBehaviorMode,
+  type SendBehavior,
+  type SendBehaviorMode,
+} from './utils/sendBehavior';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
@@ -303,6 +309,7 @@ const App = () => {
     forceClosePermissionDialog, forceCloseAskUserQuestionDialog,
     customSessionTitleRef, currentSessionIdRef, updateHistoryTitle, applyHistoryTitleLocal,
     setCustomSessionTitle,
+    onAgentCompleted: () => drainFollowUpQueueRef.current(),
     setPermissionDialogTimeoutSeconds,
   });
 
@@ -337,14 +344,43 @@ const App = () => {
   });
 
   // ── Message queue ──
+  // 不再自动监听 isLoading（工具执行间隙会抖动），改为在 agent 回合完成
+  // （Java onAgentCompleted）或初始化 loading 完成时由调用方手动 drainOne。
   const {
     queue: messageQueue,
     enqueue: enqueueMessage,
     dequeue: dequeueMessage,
-  } = useMessageQueue({ isLoading: loading, onExecute: executeMessage });
+    drainOne: drainFollowUpQueue,
+  } = useMessageQueue({ onExecute: executeMessage });
+
+  // 供 useWindowCallbacks（声明在 useMessageQueue 之前）通过 ref 访问 drain 方法
+  const drainFollowUpQueueRef = useRef<() => void>(() => {});
+  drainFollowUpQueueRef.current = drainFollowUpQueue;
+
+  // 纯初始化 loading 完成（从未进入过流式）时 drain 队列；
+  // agent 场景由 onAgentCompleted 事件驱动，避免工具执行间隙 loading 抖动误触发
+  const streamingSeenRef = useRef(false);
+  useEffect(() => {
+    if (streamingActive) streamingSeenRef.current = true;
+  }, [streamingActive]);
+  const prevLoadingRef = useRef(loading);
+  useEffect(() => {
+    const wasLoading = prevLoadingRef.current;
+    prevLoadingRef.current = loading;
+    if (wasLoading && !loading && !streamingActive && !streamingSeenRef.current) {
+      drainFollowUpQueueRef.current();
+    }
+  }, [loading, streamingActive]);
+
+  // ── 流式发送键位模式（回车/Tab 语义：引导 steer / 后续 followUp），存 localStorage ──
+  const [sendBehaviorMode, setSendBehaviorMode] = useState<SendBehaviorMode>(() => readSendBehaviorMode());
+  const handleSendBehaviorModeChange = useCallback((mode: SendBehaviorMode) => {
+    setSendBehaviorMode(mode);
+    writeSendBehaviorMode(mode);
+  }, []);
 
   // handleSubmit with queue support (new session and local commands bypass loading check)
-  const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
+  const handleSubmit = useCallback((content: string, attachments?: Attachment[], behavior: SendBehavior = 'steer') => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     if (!text && !hasAttachments) return;
@@ -374,8 +410,14 @@ const App = () => {
       enqueueMessage(content, attachments);
       return;
     }
-    hookHandleSubmit(content, attachments);
-  }, [loading, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t]);
+    // 模型对话进行中 + followUp：进本地队列排队，等当前对话完成后自动执行
+    if (streamingActive && behavior === 'followUp') {
+      enqueueMessage(content, attachments);
+      return;
+    }
+    // 其余（非流式 或 steer 打断引导）直接发送
+    hookHandleSubmit(content, attachments, behavior);
+  }, [loading, streamingActive, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
@@ -449,6 +491,7 @@ const App = () => {
         <SettingsView
           onClose={() => setCurrentView('chat')}
           initialTab={settingsInitialTab}
+          onSendBehaviorModeChange={handleSendBehaviorModeChange}
         />
       ) : (
         <>
@@ -474,6 +517,7 @@ const App = () => {
               onSubmit={handleSubmit}
               onInterrupt={interruptSession}
               onProviderSelect={wrappedHandleProviderSelect}
+              sendBehaviorMode={sendBehaviorMode}
               currentProvider={currentProvider}
               selectedModel={selectedModel}
               permissionMode={permissionMode}

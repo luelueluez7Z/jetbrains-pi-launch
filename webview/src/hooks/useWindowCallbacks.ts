@@ -112,6 +112,9 @@ export interface UseWindowCallbacksOptions {
 
   // AI title generation: update the displayed session title when backend generates one
   setCustomSessionTitle: React.Dispatch<React.SetStateAction<string | null>>;
+
+  // Agent turn completed (Java onAgentSettled) — reliable signal to drain the followUp message queue
+  onAgentCompleted?: () => void;
 }
 
 export function useWindowCallbacks(options: UseWindowCallbacksOptions): void {

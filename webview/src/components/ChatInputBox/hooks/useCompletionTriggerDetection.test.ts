@@ -31,7 +31,6 @@ describe('useCompletionTriggerDetection', () => {
           fileCompletion: completions.file,
           commandCompletion: completions.command,
           agentCompletion: completions.agent,
-          promptCompletion: completions.prompt,
           dollarCommandCompletion: completions.dollar,
         }),
       {

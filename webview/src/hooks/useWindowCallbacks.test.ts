@@ -46,6 +46,8 @@ describe('useWindowCallbacks integration', () => {
     setCodexPermissionMode: vi.fn(),
     setSelectedClaudeModel: vi.fn(),
     setSelectedCodexModel: vi.fn(),
+    setSelectedPiModel: vi.fn(),
+    setPiThinkingLevels: vi.fn(),
     setLongContextEnabled: vi.fn(),
     setReasoningEffort: vi.fn(),
     setCodexFastMode: vi.fn(),
@@ -59,9 +61,6 @@ describe('useWindowCallbacks integration', () => {
     setSdkStatus: vi.fn(),
     setSdkStatusLoaded: vi.fn(),
     setSdkStatusError: vi.fn(),
-    setIsRewinding: vi.fn(),
-    setRewindDialogOpen: vi.fn(),
-    setCurrentRewindRequest: vi.fn(),
     setContextInfo: vi.fn(),
     setSelectedAgent: vi.fn(),
 
@@ -93,13 +92,8 @@ describe('useWindowCallbacks integration', () => {
     syncActiveProviderModelMapping: vi.fn(),
     openPermissionDialog: vi.fn(),
     openAskUserQuestionDialog: vi.fn(),
-    openPlanApprovalDialog: vi.fn(),
     forceClosePermissionDialog: vi.fn(),
     forceCloseAskUserQuestionDialog: vi.fn(),
-    forceClosePlanApprovalDialog: vi.fn(),
-    openContextUsageDialog: vi.fn(),
-    updateContextUsageData: vi.fn(),
-    closeContextUsageDialog: vi.fn(),
 
     // B-011
     customSessionTitleRef: { current: null },

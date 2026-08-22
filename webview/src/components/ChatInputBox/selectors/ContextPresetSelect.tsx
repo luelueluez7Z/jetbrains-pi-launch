@@ -26,8 +26,9 @@ interface ContextPresetState {
  * ContextPresetSelect - 上下文挡位选择器
  *
  * 调用的 pi 扩展: ~/.pi/agent/extensions/ctx-preset（/ctx 命令）。
- * 选择挡位后写 ~/.pi/agent/ctx-preset.json 并重启 pi 进程（单会话模式），
- * 扩展在 session_start 时自动应用持久化挡位，压缩触发点随之改变。
+ * 选择挡位后发送 `/ctx <level> --p` 扩展命令：扩展通过 registerProvider 在内存中
+ * 立即重注册当前模型（覆盖 contextWindow）并写入 ~/.pi/agent/ctx-preset.json 持久化，
+ * **无需重启 pi 进程/会话**（与 TUI 的 /ctx 行为一致）。
  */
 export const ContextPresetSelect = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -146,7 +147,7 @@ export const ContextPresetSelect = () => {
                     {level}K{isPersisted ? ' · 持久化' : ''}
                   </span>
                   <span className="mode-description">
-                    {isCurrent ? '当前生效' : '切换后重启会话生效'}
+                    {isCurrent ? '当前生效' : '切换后立即生效，无需重启会话'}
                   </span>
                 </div>
                 {isCurrent && <span className="codicon codicon-check check-mark" />}

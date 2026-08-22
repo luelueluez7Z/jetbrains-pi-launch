@@ -11,6 +11,83 @@ import { HistoryActions } from './HistoryActions';
 // Deep search timeout (milliseconds)
 const DEEP_SEARCH_TIMEOUT_MS = 30000;
 
+// ================= 会话搜索解析（移植 pi TUI session-selector-search）=================
+// 支持：re:<pattern> 正则模式；"短语" 精确匹配（忽略空白差异）；普通 token 大小写不敏感包含。
+interface ParsedSearch {
+  mode: 'regex' | 'tokens';
+  regex: RegExp | null;
+  tokens: { kind: 'fuzzy' | 'phrase'; value: string }[];
+}
+
+function parseSessionSearchQuery(query: string): ParsedSearch | null {
+  const trimmed = query.trim();
+  if (!trimmed) return { mode: 'tokens', regex: null, tokens: [] };
+
+  // 正则模式：re:<pattern>
+  if (trimmed.startsWith('re:')) {
+    const pattern = trimmed.slice(3).trim();
+    if (!pattern) return null;
+    try {
+      return { mode: 'regex', regex: new RegExp(pattern, 'i'), tokens: [] };
+    } catch {
+      return null;
+    }
+  }
+
+  // token 模式 + 引号短语（"node cve" → 整体精确匹配）
+  const tokens: { kind: 'fuzzy' | 'phrase'; value: string }[] = [];
+  let buf = '';
+  let inQuote = false;
+  let hadUnclosedQuote = false;
+  const flush = (kind: 'fuzzy' | 'phrase') => {
+    const v = buf.trim();
+    buf = '';
+    if (v) tokens.push({ kind, value: v });
+  };
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '"') {
+      if (inQuote) { flush('phrase'); inQuote = false; } else { flush('fuzzy'); inQuote = true; }
+      continue;
+    }
+    if (!inQuote && /\s/.test(ch)) { flush('fuzzy'); continue; }
+    buf += ch;
+  }
+  if (inQuote) hadUnclosedQuote = true;
+  if (hadUnclosedQuote) {
+    // 引号未闭合 → 退化为普通空白分词
+    return {
+      mode: 'tokens',
+      tokens: trimmed.split(/\s+/).map(v => v.trim()).filter(Boolean).map(v => ({ kind: 'fuzzy' as const, value: v })),
+      regex: null,
+    };
+  }
+  flush(inQuote ? 'phrase' : 'fuzzy');
+  return { mode: 'tokens', tokens, regex: null };
+}
+
+function normalizeWsLower(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** 匹配会话：搜索目标 = id + 标题（含首消息摘要）+ 会话路径。 */
+function matchSessionSearch(s: HistorySessionSummary, parsed: ParsedSearch): boolean {
+  const text = `${s.id ?? ''} ${s.title ?? ''} ${s.sessionId}`;
+  if (parsed.mode === 'regex') {
+    return parsed.regex ? parsed.regex.test(text) : false;
+  }
+  if (parsed.tokens.length === 0) return true;
+  const normalized = normalizeWsLower(text);
+  for (const token of parsed.tokens) {
+    if (token.kind === 'phrase') {
+      if (!normalized.includes(normalizeWsLower(token.value))) return false;
+    } else if (!text.toLowerCase().includes(token.value.toLowerCase())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 const ROOT_STYLE: React.CSSProperties = {
   height: '100%',
   display: 'flex',
@@ -173,16 +250,16 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
     }
   }, [historyData?.success, historyData?.total, historyData?.sessions]);
 
-  // Search filter (case-insensitive), keep original order
+  // 搜索过滤：移植 pi TUI session-selector-search 的解析逻辑
+  // 支持 re:<pattern>（正则）、"短语"（精确匹配，忽略空白）、普通 token（大小写不敏感包含）
   const sessions = useMemo(() => {
     const rawSessions = deduplicateHistorySessions(historyData?.sessions ?? []);
+    const query = searchQuery.trim();
+    if (!query) return rawSessions;
 
-    // Search filter (case-insensitive)
-    return searchQuery.trim()
-      ? rawSessions.filter(s =>
-          s.title?.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      : rawSessions;
+    const parsed = parseSessionSearchQuery(query);
+    if (!parsed) return [];
+    return rawSessions.filter(s => matchSessionSearch(s, parsed));
   }, [historyData?.sessions, searchQuery]);
 
   const infoBar = !historyData

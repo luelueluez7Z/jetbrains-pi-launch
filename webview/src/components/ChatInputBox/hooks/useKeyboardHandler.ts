@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MutableRefObject } from 'react';
+import type { SendBehavior, SendBehaviorMode } from '../../../utils/sendBehavior.js';
+import { behaviorForEnter, behaviorForTab } from '../../../utils/sendBehavior.js';
 
 interface CompletionWithKeyDown {
   isOpen: boolean;
@@ -34,7 +36,9 @@ export interface UseKeyboardHandlerOptions {
   inlineCompletion?: InlineCompletionHandler;
   completionSelectedRef: MutableRefObject<boolean>;
   submittedOnEnterRef: MutableRefObject<boolean>;
-  handleSubmit: () => void;
+  /** 流式发送键位模式（决定回车/Tab 分别触发引导还是后续） */
+  sendBehaviorMode: SendBehaviorMode;
+  handleSubmit: (behavior?: SendBehavior) => void;
 }
 
 /**
@@ -61,6 +65,7 @@ export function useKeyboardHandler({
   inlineCompletion,
   completionSelectedRef,
   submittedOnEnterRef,
+  sendBehaviorMode,
   handleSubmit,
 }: UseKeyboardHandlerOptions) {
   const onKeyDown = useCallback(
@@ -129,6 +134,17 @@ export function useKeyboardHandler({
         }
       }
 
+      // Tab 发送（按模式分发：steerOnEnter → Tab=后续 followUp；followUpOnEnter → Tab=引导 steer）
+      // 仅在无补全下拉/内联建议占用了 Tab 时才发送，避免键位冲突
+      if (e.key === 'Tab' && !isIMEComposing) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (sdkStatusLoading || !sdkInstalled) return;
+        submittedOnEnterRef.current = true;
+        handleSubmit(behaviorForTab(sendBehaviorMode));
+        return;
+      }
+
       if (handleHistoryKeyDown(e)) return;
 
       const isRecentlyComposing = Date.now() - lastCompositionEndTimeRef.current < 100;
@@ -143,7 +159,7 @@ export function useKeyboardHandler({
       if (sdkStatusLoading || !sdkInstalled) return;
 
       submittedOnEnterRef.current = true;
-      handleSubmit();
+      handleSubmit(behaviorForEnter(sendBehaviorMode));
     },
     [
       isComposingRef,
@@ -160,6 +176,7 @@ export function useKeyboardHandler({
       sdkInstalled,
       submittedOnEnterRef,
       completionSelectedRef,
+      sendBehaviorMode,
       handleSubmit,
     ]
   );

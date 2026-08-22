@@ -5,6 +5,7 @@ import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import { EFFORT_SUPPORTED_CLAUDE_MODELS } from '../components/ChatInputBox/types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort, SelectedAgent, CodexFastMode } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
+import type { SendBehavior } from '../utils/sendBehavior';
 import type { ViewMode } from './useModelProviderState';
 
 /**
@@ -184,14 +185,15 @@ export function useMessageSender({
   }, []);
 
   /**
-   * Send message to backend
+   * Send message to backend（behavior：流式中的发送语义，steer=打断引导 / followUp=排队后续）
    */
   const sendMessageToBackend = useCallback((
     text: string,
     attachments: Attachment[] | undefined,
     agentInfo: { id: string; name: string; prompt?: string } | null,
     fileTagsInfo: { displayPath: string; absolutePath: string }[] | null,
-    requestedPermissionMode: PermissionMode
+    requestedPermissionMode: PermissionMode,
+    behavior?: SendBehavior
   ) => {
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     const effectivePermissionMode: PermissionMode = currentProvider === 'codex' && requestedPermissionMode === 'plan'
@@ -221,6 +223,7 @@ export function useMessageSender({
           permissionMode: effectivePermissionMode,
           ...reasoningEffortPayload,
           codexFastMode,
+          behavior,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
       } catch (error) {
@@ -232,6 +235,7 @@ export function useMessageSender({
           permissionMode: effectivePermissionMode,
           ...reasoningEffortPayload,
           codexFastMode,
+          behavior,
         });
         sendBridgeEvent('send_message', fallbackPayload);
       }
@@ -243,6 +247,7 @@ export function useMessageSender({
         permissionMode: effectivePermissionMode,
         ...reasoningEffortPayload,
         codexFastMode,
+        behavior,
       });
       sendBridgeEvent('send_message', payload);
     }
@@ -251,7 +256,7 @@ export function useMessageSender({
   /**
    * Execute message sending (from queue or directly)
    */
-  const executeMessage = useCallback((content: string, attachments?: Attachment[]) => {
+  const executeMessage = useCallback((content: string, attachments?: Attachment[], behavior?: SendBehavior) => {
     // Expand inline quote chips (tokens) into their full Markdown blockquotes.
     const text = expandQuoteTokens(content).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
@@ -336,7 +341,7 @@ export function useMessageSender({
     })) : null;
 
     // Send message to backend
-    sendMessageToBackend(text, attachments, agentInfo, fileTagsInfo, permissionMode);
+    sendMessageToBackend(text, attachments, agentInfo, fileTagsInfo, permissionMode, behavior);
   }, [
     sdkStatusLoading,
     currentSdkInstalled,
@@ -352,7 +357,7 @@ export function useMessageSender({
   /**
    * Handle message submission (from ChatInputBox)
    */
-  const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
+  const handleSubmit = useCallback((content: string, attachments?: Attachment[], behavior?: SendBehavior) => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
 
@@ -368,7 +373,7 @@ export function useMessageSender({
     if (checkUnimplementedCommand(text)) return;
 
     // Execute message
-    executeMessage(content, attachments);
+    executeMessage(content, attachments, behavior);
   }, [checkNewSessionCommand, checkLocalCommand, checkUnimplementedCommand, executeMessage]);
 
   /**

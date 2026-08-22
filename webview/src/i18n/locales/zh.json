@@ -1240,7 +1240,7 @@
     "noSessionsDesc": "当前项目下没有找到 Claude 会话记录",
     "totalSessions": "共 {{count}} 个会话 · {{total}} 条消息",
     "messageCount": "{{count}} 条消息",
-    "searchPlaceholder": "搜索会话标题...",
+    "searchPlaceholder": "搜索会话标题...（支持 re:正则 / \"精确短语\"）",
     "noSearchResults": "未找到匹配的会话",
     "tryOtherKeywords": "尝试其他搜索关键词",
     "deepSearchTooltip": "深度搜索（清空缓存后重新加载）",
