@@ -27,8 +27,10 @@
 
 ## 构建与验证
 ```
-# 打包插件 zip（输出 build/distributions/pichat.zip）
-.\gradlew.bat clean buildPlugin
+# 一键打包插件 zip（先 webview npm build，再 clean buildPlugin；输出 build/distributions/pichat.zip）
+.\build.ps1
+# 仅 Kotlin 改动时增量打包：
+.\build.ps1 -NoClean
 
 # 运行沙箱 IDE（本地 IDE 需在 gradle.properties 临时启用 localIdePath）
 .\gradlew.bat runIde
@@ -39,8 +41,8 @@ cd webview && npm install && npm run build
 # 前端单元测试（vitest）
 cd webview && npm test
 ```
-- **webview 改动后必须 `npm run build` 再打包**——否则把旧 HTML/JS/CSS 打进插件
-- 仅 webview 改动（无 Kotlin 修改）时，Gradle 的 `composedJar` 会报 UP-TO-DATE 复用旧 jar，**必须用 `clean buildPlugin`** 强制重新打包
+- **webview 改动后必须 `npm run build` 再打包**——否则把旧 HTML/JS/CSS 打进插件；`build.ps1` 已自动串联两步
+- 仅 webview 改动（无 Kotlin 修改）时，Gradle 的 `composedJar` 会报 UP-TO-DATE 复用旧 jar，**必须用 `clean buildPlugin`** 强制重新打包（`build.ps1` 默认即此）
 - 用户反馈"插件仍是旧/fallback UI"时：先核对**实际安装的 jar**（不是 build/distributions 里的），并确认 `idea64.exe` 已完全退出，再沿 webview 构建链排查
 - 前端 bridge（JS→Java）依赖 `sendToJava` **直接嵌入 HTML**（JBCefJSQuery 注入的 `window.cefQuery_<hash>_<index>` 函数），勿改用 onLoadEnd/executeJavaScript 注入——remote JCEF（IDEA 2026.2 / JCEF 144）下 onLoadEnd 可能丢失
 

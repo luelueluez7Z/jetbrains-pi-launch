@@ -55,19 +55,21 @@ Search for **"Pi Chat"** in `Settings → Plugins → Marketplace` and install i
 ## Development
 
 ```
-# Build the Kotlin plugin (compiles + instruments + zips)
-.\gradlew.bat buildPlugin
+# One-shot build: webview frontend (npm run build) then plugin zip
+# (default runs `clean buildPlugin` to avoid the stale-jar UP-TO-DATE trap;
+#  use -NoClean for Kotlin-only fast iteration)
+.\build.ps1
 
 # Run a sandbox IDE with the plugin (uses the local IDEA install if configured)
 .\gradlew.bat runIde
 
-# Webview frontend (React 19 + Vite + Tailwind 4)
+# Webview frontend (React 19 + Vite + Tailwind 4) — only if building by hand
 cd webview
 npm install
 npm run build          # emits webview/dist, copied into resources/web/index.html
 ```
 
-The webview is a single-file bundle embedded in the plugin; after changing frontend code, rebuild it, then `buildPlugin`, then restart the sandbox.
+The webview is a single-file bundle embedded in the plugin; after changing frontend code, rebuild it, then `buildPlugin`, then restart the sandbox. `build.ps1` chains both steps so a frontend-only change is never shipped stale.
 
 ### Project layout
 
