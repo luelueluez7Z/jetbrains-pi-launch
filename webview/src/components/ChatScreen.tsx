@@ -87,6 +87,7 @@ export interface ChatScreenProps {
   // Message queue
   messageQueue: MessageQueueValue;
   onRemoveFromQueue: (id: string) => void;
+  onRecallFromQueue: (id: string) => void;
 
   // StatusPanel (todos + subagents)
   todos: TodoItem[];
@@ -112,7 +113,7 @@ export const ChatScreen = ({
   onModeSelect, onModelSelect, onAgentSelect, onReasoningChange, onCodexFastModeChange, onToggleThinking,
   onStreamingEnabledChange,
   onAutoOpenFileEnabledChange, onLongContextChange,
-  messageQueue, onRemoveFromQueue,
+  messageQueue, onRemoveFromQueue, onRecallFromQueue,
   todos, subagents, statusPanelExpanded, onToggleStatusPanel,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
@@ -233,6 +234,7 @@ export const ChatScreen = ({
           addToast={addToast}
           messageQueue={messageQueue}
           onRemoveFromQueue={onRemoveFromQueue}
+          onRecallFromQueue={onRecallFromQueue}
           autoOpenFileEnabled={autoOpenFileEnabled}
           onAutoOpenFileEnabledChange={onAutoOpenFileEnabledChange}
           longContextEnabled={longContextEnabled}

@@ -350,8 +350,21 @@ const App = () => {
     queue: messageQueue,
     enqueue: enqueueMessage,
     dequeue: dequeueMessage,
+    recall: recallMessage,
     drainOne: drainFollowUpQueue,
   } = useMessageQueue({ onExecute: executeMessage });
+
+  // 撤回排队消息到输入框（保留原有内容，追加到末尾）
+  const handleRecallFromQueue = useCallback((id: string) => {
+    const item = recallMessage(id);
+    if (!item) return;
+    const input = chatInputRef.current;
+    if (input) {
+      const current = input.getValue();
+      input.setValue(current.trim() ? `${current}\n${item.content}` : item.content);
+      input.focus();
+    }
+  }, [recallMessage]);
 
   // 供 useWindowCallbacks（声明在 useMessageQueue 之前）通过 ref 访问 drain 方法
   const drainFollowUpQueueRef = useRef<() => void>(() => {});
@@ -548,7 +561,8 @@ const App = () => {
               onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
               onLongContextChange={handleLongContextChange}
               messageQueue={messageQueue}
-              onRemoveFromQueue={dequeueMessage}
+               onRemoveFromQueue={dequeueMessage}
+               onRecallFromQueue={handleRecallFromQueue}
               todos={globalTodos}
               subagents={subagents}
               statusPanelExpanded={statusPanelExpanded}

@@ -24,6 +24,7 @@ export function ChatInputBoxHeader({
   onToggleStatusPanel,
   messageQueue,
   onRemoveFromQueue,
+  onRecallFromQueue,
   autoOpenFileEnabled,
   onRequestEnableFileContext,
 }: {
@@ -46,6 +47,7 @@ export function ChatInputBoxHeader({
   onToggleStatusPanel?: () => void;
   messageQueue?: QueuedMessage[];
   onRemoveFromQueue?: (id: string) => void;
+  onRecallFromQueue?: (id: string) => void;
   autoOpenFileEnabled?: boolean;
   onRequestEnableFileContext?: () => void;
 }) {
@@ -56,6 +58,7 @@ export function ChatInputBoxHeader({
         <MessageQueue
           queue={messageQueue}
           onRemove={onRemoveFromQueue ?? (() => {})}
+          onRecall={onRecallFromQueue ?? (() => {})}
         />
       )}
 

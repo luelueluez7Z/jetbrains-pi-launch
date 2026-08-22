@@ -5,13 +5,15 @@ export interface MessageQueueProps {
   queue: QueuedMessage[];
   /** Remove item callback */
   onRemove: (id: string) => void;
+  /** 撤回：把排队消息内容写回输入框并移出队列 */
+  onRecall: (id: string) => void;
 }
 
 /**
  * MessageQueue - Displays queued messages above input box
  * Shows numbered list with message preview and close button
  */
-export function MessageQueue({ queue, onRemove }: MessageQueueProps) {
+export function MessageQueue({ queue, onRemove, onRecall }: MessageQueueProps) {
   if (queue.length === 0) {
     return null;
   }
@@ -28,6 +30,13 @@ export function MessageQueue({ queue, onRemove }: MessageQueueProps) {
             <span className="message-queue-content" title={item.content}>
               {item.content}
             </span>
+            <button
+              className="message-queue-recall"
+              onClick={() => onRecall(item.id)}
+              title="撤回消息到输入框"
+            >
+              <span className="codicon codicon-undo" />
+            </button>
             <button
               className="message-queue-remove"
               onClick={() => onRemove(item.id)}

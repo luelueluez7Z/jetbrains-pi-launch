@@ -774,6 +774,8 @@ export interface ChatInputBoxProps {
   messageQueue?: QueuedMessage[];
   /** Remove message from queue callback */
   onRemoveFromQueue?: (id: string) => void;
+  /** 撤回排队消息到输入框 */
+  onRecallFromQueue?: (id: string) => void;
 
   /** Whether auto open file is enabled */
   autoOpenFileEnabled?: boolean;

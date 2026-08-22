@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import type { Attachment } from '../components/ChatInputBox/types';
 
 export interface QueuedMessage {
@@ -20,6 +20,8 @@ export interface UseMessageQueueReturn {
   enqueue: (content: string, attachments?: Attachment[]) => void;
   /** Remove message from queue by id */
   dequeue: (id: string) => void;
+  /** 撤回：从队列移除并返回该项（供调用方把内容写回输入框） */
+  recall: (id: string) => QueuedMessage | undefined;
   /** Clear entire queue */
   clearQueue: () => void;
   /** Whether queue has items */
@@ -37,6 +39,11 @@ export interface UseMessageQueueReturn {
 export function useMessageQueue({ onExecute }: UseMessageQueueOptions): UseMessageQueueReturn {
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
   const isExecutingFromQueueRef = useRef(false);
+  // 同步读取队列快照（recall 需要在 setQueue 前拿到被撤回项）
+  const queueRef = useRef<QueuedMessage[]>([]);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
 
   // Generate unique ID
   const generateId = useCallback(() => {
@@ -57,6 +64,15 @@ export function useMessageQueue({ onExecute }: UseMessageQueueOptions): UseMessa
   // Remove message from queue
   const dequeue = useCallback((id: string) => {
     setQueue(prev => prev.filter(item => item.id !== id));
+  }, []);
+
+  // 撤回：从队列移除并返回该项（调用方把内容写回输入框）
+  const recall = useCallback((id: string): QueuedMessage | undefined => {
+    const item = queueRef.current.find(i => i.id === id);
+    if (item) {
+      setQueue(prev => prev.filter(i => i.id !== id));
+    }
+    return item;
   }, []);
 
   // Clear entire queue
@@ -84,6 +100,7 @@ export function useMessageQueue({ onExecute }: UseMessageQueueOptions): UseMessa
     queue,
     enqueue,
     dequeue,
+    recall,
     clearQueue,
     hasQueuedMessages: queue.length > 0,
     drainOne,
