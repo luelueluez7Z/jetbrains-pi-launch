@@ -1230,31 +1230,55 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 // force：切换会话后强制重载，先清掉临时 system 消息再加载目标历史
                 if (force) messages.clear()
                 val arr = res.data().getAsJsonArray("messages")
-                LOG.info("[PiChatDiag] loadHistory(force=" + force + ") messages=" + arr.size())
-                for (el in arr) {
-                    if (!el.isJsonObject) continue
-                    val m = el.asJsonObject
-                    if (!m.has("role")) continue
-                    when (m.get("role").asString) {
+                    LOG.info("[PiChatDiag] loadHistory(force=" + force + ") messages=" + arr.size())
+                    // toolCallId → tool 消息 的映射，用于把 toolResult 配对回对应的工具调用
+                    val toolMap = HashMap<String, ChatMessage>()
+                    for (el in arr) {
+                        if (!el.isJsonObject) continue
+                        val m = el.asJsonObject
+                        if (!m.has("role")) continue
+                        when (m.get("role").asString) {
                         "user" -> messages.add(ChatMessage.user(textOf(m.get("content"))))
                         "assistant" -> {
-                            val am = ChatMessage.assistant()
+                            var am = ChatMessage.assistant()
                             val content = m.get("content")
                             if (content != null && content.isJsonArray) {
                                 for (b in content.asJsonArray) {
                                     if (!b.isJsonObject) continue
                                     val block = b.asJsonObject
                                     val t = block.str("type")
-                                    if (t == "text" && block.has("text")) {
-                                        val text = block.get("text").asString
-                                        // magic-context 压缩重建会把 <thinking>/</thinking> 标签错位：
-                                        // open 标签残留进 thinking 内容，close 标签（如 `</thinking>`）残留进 text 块
-                                        // （可能是孤立块，也可能与真实文本混合）。统一剥离标签，剥离后为空的块忽略。
-                                        val cleaned = stripThinkingTags(text)
-                                        if (!cleaned.isBlank() && !isStrayThinkingTag(cleaned)) am.appendText(cleaned)
-                                    } else if (t == "thinking" && block.has("thinking")) {
-                                        // 剥离 thinking 内容里残留的 thinking 标签（<thinking>/<reasoning>/<thought> 等）
-                                        am.appendThinking(stripThinkingTags(block.get("thinking").asString))
+                                    when (t) {
+                                        "text" -> {
+                                            if (block.has("text")) {
+                                                val text = block.get("text").asString
+                                                // magic-context 压缩重建会把 <thinking>/</thinking> 标签错位：
+                                                // open 标签残留进 thinking 内容，close 标签（如 `</thinking>`）残留进 text 块
+                                                // （可能是孤立块，也可能与真实文本混合）。统一剥离标签，剥离后为空的块忽略。
+                                                val cleaned = stripThinkingTags(text)
+                                                if (!cleaned.isBlank() && !isStrayThinkingTag(cleaned)) am.appendText(cleaned)
+                                            }
+                                        }
+                                        "thinking" -> {
+                                            if (block.has("thinking")) {
+                                                // 剥离 thinking 内容里残留的 thinking 标签（<thinking>/<reasoning>/<thought> 等）
+                                                am.appendThinking(stripThinkingTags(block.get("thinking").asString))
+                                            }
+                                        }
+                                        "toolCall" -> {
+                                            // 工具调用块：先落定当前 assistant 消息，再作为独立 tool 消息，
+                                            // 保证 thinking/text 与工具调用的顺序和实时流式一致
+                                            if (!am.isEmpty) {
+                                                messages.add(am)
+                                                am = ChatMessage.assistant()
+                                            }
+                                            val id = block.str("id").ifEmpty { "tool-" + System.currentTimeMillis() }
+                                            val name = block.str("name").ifEmpty { "tool" }
+                                            val args = block.get("arguments")
+                                            val argsSummary = if (args != null && args.isJsonObject) args.toString() else ""
+                                            val tm = ChatMessage.tool(id, name, argsSummary)
+                                            toolMap[id] = tm
+                                            messages.add(tm)
+                                        }
                                     }
                                 }
                             } else if (content != null && content.isJsonPrimitive) {
@@ -1265,10 +1289,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                         "toolResult" -> {
                             val name = m.str("toolName") ?: "tool"
                             val id = m.str("toolCallId") ?: ""
-                            val tm = ChatMessage.tool(id, name, "")
-                            tm.toolStatus = "done"
+                            // 优先配对到 toolCall 创建的 tool 消息；找不到（压缩可能丢 toolCall）则新建
+                            val tm = toolMap[id] ?: ChatMessage.tool(id, name, "").also { messages.add(it) }
+                            tm.toolStatus = if (m.str("isError") == "true") "error" else "done"
                             tm.toolResult = textOf(m.get("content"))
-                            messages.add(tm)
                         }
                         "bashExecution" -> {
                             val command = m.str("command") ?: ""
