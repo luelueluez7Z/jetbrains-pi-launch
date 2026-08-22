@@ -96,6 +96,10 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.time.Instant
 import java.time.ZoneId
+import java.nio.file.attribute.BasicFileAttributes
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.time.format.DateTimeFormatter
 import java.util.Comparator
 import java.util.IdentityHashMap
@@ -116,7 +120,16 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private val LOG = Logger.getInstance(ChatPanel::class.java)
 
     private data class ModelItem(val provider: String, val id: String, val name: String, val contextWindow: Long = 0)
-    private data class SessionItem(val path: String, val name: String, val isCurrent: Boolean, val title: String? = null, val id: String = parseSessionId(name))
+    private data class SessionItem(
+        val path: String,
+        val name: String,
+        val isCurrent: Boolean,
+        val title: String? = null,
+        val id: String = parseSessionId(name),
+        val firstMessage: String = "",
+        val messageCount: Int = 0,
+        val lastTimestamp: Long = 0L,
+    )
     private data class ExtensionDialogState(val request: ExtensionUiRequest)
 
     @Volatile
@@ -168,6 +181,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
     private val gson = Gson()
     private var webUiReady = false
+
     private var webUpdateQueued = false
     private var webSequence = 0
     private var webStatusSent: String? = null
@@ -763,8 +777,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 result.add(JsonObject().apply {
                     addProperty("sessionId", session.path)
                     addProperty("id", session.id)
-                    addProperty("title", session.title ?: session.name.removeSuffix(".jsonl"))
-                    addProperty("messageCount", if (session.isCurrent) messages.size else 0)
+                    // TUI 规则：有名称显示名称，无名称显示首条 user 消息摘要，再回退文件名
+                    addProperty("title", session.title ?: session.firstMessage.ifBlank { session.name.removeSuffix(".jsonl") })
+                    addProperty("messageCount", if (session.isCurrent) messages.size else session.messageCount)
+                    if (session.lastTimestamp > 0) addProperty("lastTimestamp", java.time.Instant.ofEpochMilli(session.lastTimestamp).toString())
                     addProperty("provider", "pi")
                     currentModel.value?.let { addProperty("model", it.id) }
                 })
@@ -1223,89 +1239,134 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     private fun loadHistory(force: Boolean = false) {
+        // 优先直接读会话文件：会话文件与终端 pi / magic-context 共享，外部写入的最新消息
+        // 只能通过读文件拿到（get_messages 返回的是本进程内存快照，会落后）。
+        val file = currentSessionFile.value
+        if (file.isNotBlank()) {
+            val parsed = readSessionFile(file)
+            if (parsed != null) {
+                onEdt {
+                    if (!force && messages.isNotEmpty()) return@onEdt
+                    if (force) messages.clear()
+                    messages.addAll(parsed)
+                    if (messages.isNotEmpty()) {
+                        addSystem("已恢复会话，共 ${messages.size} 条历史消息（与终端 pi 共享）")
+                    }
+                    publishWebState()
+                }
+                return
+            }
+        }
         client.getMessages().thenAccept { res ->
             onEdt {
                 if (res == null || !res.success() || res.data() == null || !res.data().has("messages")) return@onEdt
                 if (!force && messages.isNotEmpty()) return@onEdt
-                // force：切换会话后强制重载，先清掉临时 system 消息再加载目标历史
                 if (force) messages.clear()
                 val arr = res.data().getAsJsonArray("messages")
-                    LOG.info("[PiChatDiag] loadHistory(force=" + force + ") messages=" + arr.size())
-                    // toolCallId → tool 消息 的映射，用于把 toolResult 配对回对应的工具调用
-                    val toolMap = HashMap<String, ChatMessage>()
-                    for (el in arr) {
-                        if (!el.isJsonObject) continue
-                        val m = el.asJsonObject
-                        if (!m.has("role")) continue
-                        when (m.get("role").asString) {
-                        "user" -> messages.add(ChatMessage.user(textOf(m.get("content"))))
-                        "assistant" -> {
-                            var am = ChatMessage.assistant()
-                            val content = m.get("content")
-                            if (content != null && content.isJsonArray) {
-                                for (b in content.asJsonArray) {
-                                    if (!b.isJsonObject) continue
-                                    val block = b.asJsonObject
-                                    val t = block.str("type")
-                                    when (t) {
-                                        "text" -> {
-                                            if (block.has("text")) {
-                                                val text = block.get("text").asString
-                                                // magic-context 压缩重建会把 <thinking>/</thinking> 标签错位：
-                                                // open 标签残留进 thinking 内容，close 标签（如 `</thinking>`）残留进 text 块
-                                                // （可能是孤立块，也可能与真实文本混合）。统一剥离标签，剥离后为空的块忽略。
-                                                val cleaned = stripThinkingTags(text)
-                                                if (!cleaned.isBlank() && !isStrayThinkingTag(cleaned)) am.appendText(cleaned)
-                                            }
-                                        }
-                                        "thinking" -> {
-                                            if (block.has("thinking")) {
-                                                // 剥离 thinking 内容里残留的 thinking 标签（<thinking>/<reasoning>/<thought> 等）
-                                                am.appendThinking(stripThinkingTags(block.get("thinking").asString))
-                                            }
-                                        }
-                                        "toolCall" -> {
-                                            // 工具调用块：先落定当前 assistant 消息，再作为独立 tool 消息，
-                                            // 保证 thinking/text 与工具调用的顺序和实时流式一致
-                                            if (!am.isEmpty) {
-                                                messages.add(am)
-                                                am = ChatMessage.assistant()
-                                            }
-                                            val id = block.str("id").ifEmpty { "tool-" + System.currentTimeMillis() }
-                                            val name = block.str("name").ifEmpty { "tool" }
-                                            val args = block.get("arguments")
-                                            val argsSummary = if (args != null && args.isJsonObject) args.toString() else ""
-                                            val tm = ChatMessage.tool(id, name, argsSummary)
-                                            toolMap[id] = tm
-                                            messages.add(tm)
-                                        }
-                                    }
-                                }
-                            } else if (content != null && content.isJsonPrimitive) {
-                                am.appendText(content.asString)
-                            }
-                            if (!am.isEmpty) messages.add(am)
-                        }
-                        "toolResult" -> {
-                            val name = m.str("toolName") ?: "tool"
-                            val id = m.str("toolCallId") ?: ""
-                            // 优先配对到 toolCall 创建的 tool 消息；找不到（压缩可能丢 toolCall）则新建
-                            val tm = toolMap[id] ?: ChatMessage.tool(id, name, "").also { messages.add(it) }
-                            tm.toolStatus = if (m.str("isError") == "true") "error" else "done"
-                            tm.toolResult = textOf(m.get("content"))
-                        }
-                        "bashExecution" -> {
-                            val command = m.str("command") ?: ""
-                            val tm = ChatMessage.tool("", "bash", command)
-                            tm.toolStatus = "done"
-                            tm.toolResult = m.str("output") ?: ""
-                            messages.add(tm)
-                        }
-                    }
+                LOG.info("[PiChatDiag] loadHistory(force=" + force + ") messages=" + arr.size())
+                val parsed = mutableListOf<ChatMessage>()
+                val toolMap = HashMap<String, ChatMessage>()
+                for (el in arr) {
+                    if (!el.isJsonObject) continue
+                    applySessionMessage(parsed, toolMap, el.asJsonObject)
                 }
+                messages.addAll(parsed)
                 if (messages.isNotEmpty()) {
                     addSystem("已恢复会话，共 ${messages.size} 条历史消息（与终端 pi 共享）")
                 }
+            }
+        }
+    }
+
+    /** 直接读会话 jsonl 文件解析历史消息（与终端 pi 共享，能看到外部写入的最新内容）。 */
+    private fun readSessionFile(file: String): List<ChatMessage>? {
+        return try {
+            val parsed = mutableListOf<ChatMessage>()
+            val toolMap = HashMap<String, ChatMessage>()
+            Files.readAllLines(Path.of(file)).forEach { line ->
+                if (line.isBlank()) return@forEach
+                val entry = try {
+                    gson.fromJson(line, JsonObject::class.java)
+                } catch (e: Exception) {
+                    return@forEach
+                }
+                val m = entry?.get("message")
+                if (m == null || !m.isJsonObject) return@forEach
+                applySessionMessage(parsed, toolMap, m.asJsonObject)
+            }
+            parsed
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** 把一条会话消息（pi AgentMessage 或其 jsonl 形态）转换为前端 ChatMessage。 */
+    private fun applySessionMessage(messages: MutableList<ChatMessage>, toolMap: HashMap<String, ChatMessage>, m: JsonObject) {
+        if (!m.has("role")) return
+        when (m.get("role").asString) {
+            "user" -> messages.add(ChatMessage.user(textOf(m.get("content"))))
+            "assistant" -> {
+                var am = ChatMessage.assistant()
+                val content = m.get("content")
+                if (content != null && content.isJsonArray) {
+                    for (b in content.asJsonArray) {
+                        if (!b.isJsonObject) continue
+                        val block = b.asJsonObject
+                        val t = block.str("type")
+                        when (t) {
+                            "text" -> {
+                                if (block.has("text")) {
+                                    val text = block.get("text").asString
+                                    // magic-context 压缩重建会把 <thinking>/</thinking> 标签错位：
+                                    // open 标签残留进 thinking 内容，close 标签（如 `</thinking>`）残留进 text 块
+                                    // （可能是孤立块，也可能与真实文本混合）。统一剥离标签，剥离后为空的块忽略。
+                                    // 同时剥离 magic-context 注入的 §N§ / §N°° 消息标记。
+                                    val cleaned = stripMagicContextMarks(stripThinkingTags(text))
+                                    if (!cleaned.isBlank() && !isStrayThinkingTag(cleaned)) am.appendText(cleaned)
+                                }
+                            }
+                            "thinking" -> {
+                                if (block.has("thinking")) {
+                                    // 剥离 thinking 内容里残留的 thinking 标签与 magic-context 标记
+                                    am.appendThinking(stripMagicContextMarks(stripThinkingTags(block.get("thinking").asString)))
+                                }
+                            }
+                            "toolCall" -> {
+                                // 工具调用块：先落定当前 assistant 消息，再作为独立 tool 消息，
+                                // 保证 thinking/text 与工具调用的顺序和实时流式一致
+                                if (!am.isEmpty) {
+                                    messages.add(am)
+                                    am = ChatMessage.assistant()
+                                }
+                                val id = block.str("id").ifEmpty { "tool-" + System.currentTimeMillis() }
+                                val name = block.str("name").ifEmpty { "tool" }
+                                val args = block.get("arguments")
+                                val argsSummary = if (args != null && args.isJsonObject) args.toString() else ""
+                                val tm = ChatMessage.tool(id, name, argsSummary)
+                                toolMap[id] = tm
+                                messages.add(tm)
+                            }
+                        }
+                    }
+                } else if (content != null && content.isJsonPrimitive) {
+                    am.appendText(content.asString)
+                }
+                if (!am.isEmpty) messages.add(am)
+            }
+            "toolResult" -> {
+                val name = m.str("toolName") ?: "tool"
+                val id = m.str("toolCallId") ?: ""
+                // 优先配对到 toolCall 创建的 tool 消息；找不到（压缩可能丢 toolCall）则新建
+                val tm = toolMap[id] ?: ChatMessage.tool(id, name, "").also { messages.add(it) }
+                tm.toolStatus = if (m.str("isError") == "true") "error" else "done"
+                tm.toolResult = textOf(m.get("content"))
+            }
+            "bashExecution" -> {
+                val command = m.str("command") ?: ""
+                val tm = ChatMessage.tool("", "bash", command)
+                tm.toolStatus = "done"
+                tm.toolResult = m.str("output") ?: ""
+                messages.add(tm)
             }
         }
     }
@@ -1335,7 +1396,13 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     }.reversed())
                     .forEach { p ->
                         val name = p.fileName.toString()
-                        list.add(SessionItem(p.toString(), name, name == currentName, readSessionTitle(p)))
+                        val meta = readSessionMeta(p)
+                        list.add(
+                            SessionItem(
+                                p.toString(), name, name == currentName, readSessionTitle(p),
+                                parseSessionId(name), meta.first, meta.second, meta.third,
+                            )
+                        )
                     }
             }
         } catch (e: Exception) {
@@ -1347,6 +1414,68 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             publishWebState()
             // sessions 更新完成后立即推送历史数据（标题/删除后列表才能刷新）
             publishHistoryData()
+        }
+    }
+
+    /** 读会话文件元信息（对齐 pi TUI）：首条 user 消息摘要、消息数、最后活动时间戳。
+     *  返回 Triple(firstMessage, messageCount, lastTimestampEpochMillis)。 */
+    private fun readSessionMeta(file: Path): Triple<String, Int, Long> {
+        var firstMessage = ""
+        var count = 0
+        var lastTs = 0L
+        try {
+            Files.newBufferedReader(file, StandardCharsets.UTF_8).use { reader ->
+                var line = reader.readLine()
+                while (line != null) {
+                    if (line.contains("\"type\":\"message\"")) {
+                        count++
+                        val ts = extractMessageTimestamp(line)
+                        if (ts > 0) lastTs = ts
+                        if (firstMessage.isEmpty() && line.contains("\"role\":\"user\"")) {
+                            val text = extractFirstUserText(line)
+                            if (text.isNotBlank() && text != "[tool_result]") {
+                                // 单行化 + 截断（对齐 TUI 的摘要显示）
+                                firstMessage = text.replace(Regex("[\\r\\n\\t]+"), " ").trim().take(120)
+                            }
+                        }
+                    }
+                    line = reader.readLine()
+                }
+            }
+        } catch (e: Exception) {
+            // 忽略不可读文件
+        }
+        if (lastTs == 0L) {
+            try { lastTs = Files.getLastModifiedTime(file).toMillis() } catch (e: Exception) {}
+        }
+        return Triple(firstMessage, count, lastTs)
+    }
+
+    /** 从 jsonl 行的 "timestamp":"ISO" 提取 epoch 毫秒。 */
+    private fun extractMessageTimestamp(line: String): Long {
+        return try {
+            val m = Regex("\"timestamp\"\\s*:\\s*\"([^\"]+)\"").find(line) ?: return 0L
+            java.time.Instant.parse(m.groupValues[1]).toEpochMilli()
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
+    /** 从 jsonl 行提取首条 user 消息文本（content 为字符串或数组中的首个 text 块）。 */
+    private fun extractFirstUserText(line: String): String {
+        return try {
+            val obj = JsonParser.parseString(line).asJsonObject
+            val msg = obj.get("message")?.takeIf { it.isJsonObject }?.asJsonObject ?: return ""
+            val content = msg.get("content") ?: return ""
+            if (content.isJsonPrimitive) content.asString
+            else if (content.isJsonArray) {
+                content.asJsonArray.mapNotNull { b ->
+                    if (b.isJsonObject && b.asJsonObject.str("type") == "text")
+                        b.asJsonObject.get("text")?.takeIf { it.isJsonPrimitive }?.asString else null
+                }.firstOrNull() ?: ""
+            } else ""
+        } catch (e: Exception) {
+            ""
         }
     }
 
@@ -1657,6 +1786,36 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         return out
     }
 
+    /**
+     * 复刻 magic-context 的 stripPersistedAssistantText（packages/plugin/src/hooks/magic-context/tag-content-primitives.ts）
+     * 标记清除规则，按序执行：
+     * 1) 开头规范 §N§ 前缀（一个或多个 + 尾随空格）
+     * 2) 全局完整 §N§ 对
+     * 3) malformed hybrid：§N">§ / §N">§N§ / §N">
+     * 4) dangling：§N + 单个 improvised closer（$、ҩ、° 等非 word/空格/§/句点字符）
+     * 5) 补充：magic-context 的 dangling 只吃掉一个 °，这里把 §N°° 的残余 ° 和孤立 °° 清掉
+     * 6) stray §
+     * 最后 trim。只用于 assistant 消息文本；user/tool 消息保留。
+     * § = U+00A7，° = U+00B0（用 \u 转义避免源码字面量字节歧义）。
+     */
+    private fun stripMagicContextMarks(text: String): String {
+        var out = text
+        // 1) 开头规范前缀：一个或多个 §N§ + 尾随空格
+        out = out.replace(Regex("^(\\u00A7\\d+\\u00A7\\s*)+"), "")
+        // 2) 全局完整对 §N§
+        out = out.replace(Regex("\\u00A7\\d+\\u00A7"), "")
+        // 3) malformed hybrid：§N">§ / §N">§N§ / §N">
+        out = out.replace(Regex("\\u00A7\\d+\">(?:\\u00A7(?:\\d+\\u00A7)?)?"), "")
+        // 4) dangling：§N + 单个 improvised closer（非 word/空格/§/句点；不碰 §5.1 小数引用）
+        out = out.replace(Regex("\\u00A7\\d+(?!\\.\\d)[^\\s\\u00A7\\w.]?"), "")
+        // 5) 补充：清残余的 °°（magic-context 只吃一个 °，模型 improvised 的 °° 闭合符会残留）
+        out = out.replace(Regex("\\u00B0{2,}"), "")
+        out = out.replace(Regex("^\\s*\\u00B0+"), "")
+        // 6) stray §
+        out = out.replace(Regex("\\u00A7"), "")
+        return out.trim()
+    }
+
     private fun JsonObject.str(key: String): String {
         return if (has(key) && !get(key).isJsonNull) get(key).asString else ""
     }
@@ -1767,17 +1926,19 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         onEdt {
             val sa = streamingAssistant
             if (sa != null) {
-                // 优先用 agent_end 携带的完整助手消息（更可靠），否则用流式累积的内容
-                val full = agentMessages?.let { extractAssistantContent(it) }
-                if (full != null) {
-                    sa.setText(full.first)
-                    sa.setThinking(full.second)
-                } else {
-                    val t = streamingText.value
-                    val th = streamingThinking.value
-                    if (t.isNotEmpty()) sa.appendText(t)
-                    if (th.isNotEmpty()) sa.appendThinking(th)
-                }
+            // 优先用 agent_end 携带的完整助手消息（更可靠），否则用流式累积的内容
+            val full = agentMessages?.let { extractAssistantContent(it) }
+            if (full != null) {
+                // 落定时清除 magic-context 标记（对齐 TUI 的 message_end 行为：
+                // 流式 delta 可能携带模型 mimic 的 §N§ 标记，落定后清除）
+                sa.setText(stripMagicContextMarks(full.first))
+                sa.setThinking(stripMagicContextMarks(full.second))
+            } else {
+                val t = streamingText.value
+                val th = streamingThinking.value
+                if (t.isNotEmpty()) sa.appendText(stripMagicContextMarks(t))
+                if (th.isNotEmpty()) sa.appendThinking(stripMagicContextMarks(th))
+            }
                 if (sa.isEmpty) {
                     messages.remove(sa)
                 } else {

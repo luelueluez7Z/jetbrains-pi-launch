@@ -251,7 +251,10 @@ export const HistoryListItem = memo(({
             highlightText(extractCommandMessageContent(session.title), searchQuery)
           )}
         </div>
-        <div className="history-item-time">{formatTimeAgo(session.lastTimestamp, t)}</div>
+        <div className="history-item-time">
+          {session.messageCount > 0 && <span className="history-item-count">{session.messageCount} · </span>}
+          {formatTimeAgo(session.lastTimestamp, t)}
+        </div>
         {!isEditing && !isSelectionMode && (
           <div className="history-action-buttons">
             <button
