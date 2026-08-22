@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { getAppViewport } from '../../../utils/viewport';
 
 export interface TooltipState {
@@ -21,8 +21,13 @@ interface UseTooltipReturn {
   handleMouseLeave: () => void;
 }
 
-const TOOLTIP_TARGET_SELECTOR =
-  '.file-tag.has-tooltip, .quote-tag.has-tooltip, .context-tool-btn.has-tooltip, .enhance-prompt-button.has-tooltip';
+// 触发 tooltip 的目标：带 has-tooltip + data-tooltip 的元素（压缩按钮、发送/停止、
+// ChatHeader 按钮、context-tool-btn、enhance-prompt-button 等）统一走 JS 浮层。
+// .context-item 排除：它用 CSS ::after 实现 tooltip（context-bar.css），避免双提示。
+const TOOLTIP_TARGET_SELECTOR = '.has-tooltip[data-tooltip]:not(.context-item)';
+
+// 悬停延迟显示时间（ms）：避免鼠标扫过时闪烁，几秒内停留才显示
+const TOOLTIP_DELAY_MS = 500;
 
 /**
  * useTooltip - Manage tooltip state for hoverable elements
@@ -33,6 +38,8 @@ const TOOLTIP_TARGET_SELECTOR =
  */
 export function useTooltip(): UseTooltipReturn {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  // 延迟显示定时器：悬停后停留一段时间才显示（防闪烁），移开即取消
+  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * Handle mouse over to show tooltip (small floating popup style)
@@ -41,9 +48,18 @@ export function useTooltip(): UseTooltipReturn {
     const target = e.target as HTMLElement;
     const triggerEl = target.closest(TOOLTIP_TARGET_SELECTOR);
 
+    // 先取消上一个待显示定时器（鼠标在元素间移动时重置延迟）
+    if (showTimerRef.current) {
+      clearTimeout(showTimerRef.current);
+      showTimerRef.current = null;
+    }
+
     if (triggerEl) {
       const text = triggerEl.getAttribute('data-tooltip');
-      if (text) {
+      if (!text) return;
+      // 延迟显示：悬停停留 TOOLTIP_DELAY_MS 后才弹出
+      showTimerRef.current = setTimeout(() => {
+        showTimerRef.current = null;
         // Use small floating tooltip (same effect as context-item)
         const rect = triggerEl.getBoundingClientRect();
         // Use #app's rect as reference - both rects are in the same coordinate space
@@ -86,16 +102,19 @@ export function useTooltip(): UseTooltipReturn {
           arrowLeft,
           isBar: false,
         });
-      }
-    } else {
-      setTooltip(null);
+      }, TOOLTIP_DELAY_MS);
     }
+    // 非目标元素：不隐藏（保持现有 tooltip，由 mouseleave 统一隐藏），避免鼠标扫过相邻元素时闪烁
   }, []);
 
   /**
    * Handle mouse leave to hide tooltip
    */
   const handleMouseLeave = useCallback(() => {
+    if (showTimerRef.current) {
+      clearTimeout(showTimerRef.current);
+      showTimerRef.current = null;
+    }
     setTooltip(null);
   }, []);
 

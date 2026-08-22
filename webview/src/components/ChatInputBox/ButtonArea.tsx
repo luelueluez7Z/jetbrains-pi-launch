@@ -246,18 +246,18 @@ export const ButtonArea = ({
         {/* Send/Stop button */}
         {isLoading ? (
           <button
-            className="submit-button stop-button"
+            className="submit-button stop-button has-tooltip"
             onClick={handleStopClick}
-            title={t('chat.stopGeneration')}
+            data-tooltip={t('chat.stopGeneration')}
           >
             <span className="codicon codicon-debug-stop" />
           </button>
         ) : (
           <button
-            className="submit-button"
+            className="submit-button has-tooltip"
             onClick={handleSubmitClick}
             disabled={disabled || !hasInputContent}
-            title={t('chat.sendMessageEnter')}
+            data-tooltip={t('chat.sendMessageEnter')}
           >
             <span className="codicon codicon-send" />
           </button>

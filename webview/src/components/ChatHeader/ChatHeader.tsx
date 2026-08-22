@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 
 import { BackIcon } from '../Icons';
+import { useTooltip } from '../ChatInputBox/hooks/useTooltip';
 
 export interface ChatHeaderProps {
   currentView: 'chat' | 'history' | 'settings';
@@ -29,6 +30,10 @@ export function ChatHeader({
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ChatHeader 在 ChatInputBox 外（onMouseOver 不会冒泡到输入框容器），
+  // 所以内部自己挂 useTooltip，让顶部按钮的 data-tooltip 提示生效。
+  const { tooltip, handleMouseOver, handleMouseLeave } = useTooltip();
 
   useEffect(() => {
     if (!titleEditable) {
@@ -85,7 +90,7 @@ export function ChatHeader({
   }
 
   return (
-    <div className="header">
+    <div className="header" onMouseOver={handleMouseOver} onMouseLeave={handleMouseLeave}>
       <div className="header-left">
         {currentView === 'history' ? (
           <button className="back-button" onClick={onBack} data-tooltip={t('common.back')}>
@@ -148,6 +153,21 @@ export function ChatHeader({
           </>
         )}
       </div>
+      {tooltip && tooltip.visible && (() => {
+        const tooltipStyle: React.CSSProperties = {
+          top: `${tooltip.top}px`,
+          left: `${tooltip.left}px`,
+          width: tooltip.width ? `${tooltip.width}px` : undefined,
+          // @ts-expect-error CSS custom properties
+          '--tooltip-tx': tooltip.tx || '-50%',
+          '--arrow-left': tooltip.arrowLeft || '50%',
+        };
+        return (
+          <div className={`tooltip-popup ${tooltip.isBar ? 'tooltip-bar' : ''}`} style={tooltipStyle}>
+            {tooltip.text}
+          </div>
+        );
+      })()}
     </div>
   );
 }
