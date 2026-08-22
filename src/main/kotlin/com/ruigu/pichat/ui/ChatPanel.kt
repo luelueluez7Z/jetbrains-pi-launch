@@ -824,7 +824,12 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun webMessages(): JsonArray = JsonArray().also { result ->
         messages.forEach { message ->
-            if (message.kind == ChatMessage.Kind.TOOL) {
+            if (message === streamingAssistant && isStreamingMsg.value) {
+                // 流式占位消息：用实时累积的文本渲染，保持消息在会话中的正确顺序
+                // （否则末尾追加会导致后续工具消息排在 assistant 之前）
+                result.add(assistantMessage(
+                    streamingText.value, streamingThinking.value, true, message.getTimestamp()))
+            } else if (message.kind == ChatMessage.Kind.TOOL) {
                 result.add(toolUseMessage(message))
                 if (message.toolStatus != "running" || message.toolResult.isNotBlank()) {
                     result.add(toolResultMessage(message))
@@ -833,9 +838,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 result.add(messageJson(message))
             }
         }
-        if (isStreamingMsg.value && (streamingText.value.isNotBlank() || streamingThinking.value.isNotBlank())) {
-            result.add(assistantMessage(streamingText.value, streamingThinking.value, true, streamingAssistant?.getTimestamp() ?: System.currentTimeMillis()))
-        }
+        // 流式消息已在 messages 中占位（ensureStreamingAssistant），不再末尾追加
     }
 
     private fun messageJson(message: ChatMessage): JsonObject = when (message.kind) {
@@ -1855,8 +1858,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun ensureStreamingAssistant() {
         if (streamingAssistant != null) return
-        streamingAssistant = ChatMessage.assistant()
+        val sa = ChatMessage.assistant()
+        streamingAssistant = sa
         onEdt {
+            // 占位：流式消息按事件顺序插入 messages，保证后续工具消息排在其后
+            messages.add(sa)
             isStreamingMsg.value = true
             streamingText.value = ""
             streamingThinking.value = ""
@@ -1922,35 +1928,52 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         }
     }
 
+    override fun onMessageEnd(message: JsonObject) {
+        // message_end：一条消息在 pi 进程内已完成（magic-context 已在持久化前清除标记）。
+        // 只处理 assistant 消息——user/toolResult 的 message_end 不应落定流式中的 assistant。
+        val msg = if (message.has("message") && message.get("message").isJsonObject)
+            message.getAsJsonObject("message") else null
+        if (msg == null || msg.str("role") != "assistant") return
+        // 在此落定，保证后续工具消息（tool_execution_start）按语义顺序排在其后
+        val arr = JsonArray().also { it.add(msg) }
+        val full = extractAssistantContent(arr)
+        onEdt { finalizeStreaming(full) }
+    }
+
     override fun onAgentEnd(agentMessages: JsonArray?, willRetry: Boolean) {
         onEdt {
-            val sa = streamingAssistant
-            if (sa != null) {
-            // 优先用 agent_end 携带的完整助手消息（更可靠），否则用流式累积的内容
-            val full = agentMessages?.let { extractAssistantContent(it) }
-            if (full != null) {
-                // 落定时清除 magic-context 标记（对齐 TUI 的 message_end 行为：
-                // 流式 delta 可能携带模型 mimic 的 §N§ 标记，落定后清除）
-                sa.setText(stripMagicContextMarks(full.first))
-                sa.setThinking(stripMagicContextMarks(full.second))
-            } else {
-                val t = streamingText.value
-                val th = streamingThinking.value
-                if (t.isNotEmpty()) sa.appendText(stripMagicContextMarks(t))
-                if (th.isNotEmpty()) sa.appendThinking(stripMagicContextMarks(th))
-            }
-                if (sa.isEmpty) {
-                    messages.remove(sa)
-                } else {
-                    messages.add(sa)
-                }
-                streamingAssistant = null
-                isStreamingMsg.value = false
-                streamingText.value = ""
-                streamingThinking.value = ""
-            }
+            finalizeStreaming(agentMessages?.let { extractAssistantContent(it) })
             publishWebState()
         }
+    }
+
+    /**
+     * 落定当前流式 assistant 消息到 messages（保持语义顺序），并清除 magic-context 标记。
+     * full 非空时优先用完整消息（已清除），否则用流式累积的 streamingText/streamingThinking 兜底。
+     */
+    private fun finalizeStreaming(full: Pair<String, String>?) {
+        val sa = streamingAssistant ?: return
+        if (full != null) {
+            // 落定时清除 magic-context 标记（对齐 TUI 的 message_end 行为：
+            // 流式 delta 可能携带模型 mimic 的 §N§ 标记，落定后清除）
+            sa.setText(stripMagicContextMarks(full.first))
+            sa.setThinking(stripMagicContextMarks(full.second))
+        } else {
+            val t = streamingText.value
+            val th = streamingThinking.value
+            if (t.isNotEmpty()) sa.appendText(stripMagicContextMarks(t))
+            if (th.isNotEmpty()) sa.appendThinking(stripMagicContextMarks(th))
+        }
+        if (sa.isEmpty) {
+            messages.remove(sa)
+        } else if (!messages.contains(sa)) {
+            // 正常情况下 ensureStreamingAssistant 已占位；此处兜底
+            messages.add(sa)
+        }
+        streamingAssistant = null
+        isStreamingMsg.value = false
+        streamingText.value = ""
+        streamingThinking.value = ""
     }
 
     /** 从 agent_end 的完整消息列表中提取最后一条有内容的 assistant 消息。 */
