@@ -1338,6 +1338,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         if (file.isNotBlank()) {
             val parsed = readSessionFile(file)
             if (parsed != null) {
+                // 进程中断时最后一条工具可能没有配对 toolResult：标记中断，避免前端永远转圈
+                finalizeInterruptedTools(parsed)
                 onEdt {
                     if (!force && messages.isNotEmpty()) return@onEdt
                     if (force) messages.clear()
@@ -1366,6 +1368,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     if (!el.isJsonObject) continue
                     applySessionMessage(parsed, toolMap, el.asJsonObject)
                 }
+                // 进程中断时最后一条工具可能没有配对 toolResult：标记中断
+                finalizeInterruptedTools(parsed)
                 messages.addAll(parsed)
                 if (messages.isNotEmpty()) {
                     addSystem("已恢复会话，共 ${messages.size} 条历史消息（与终端 pi 共享）")
@@ -1380,6 +1384,19 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         isStreamingMsg.value = false
         streamingText.value = ""
         streamingThinking.value = ""
+    }
+
+    /**
+     * 历史加载收尾：把未配对 toolResult 的 tool 消息（进程中断/会话被强杀，工具没跑完）
+     * 标记为中断（error + 说明），否则前端永远显示“运行中”转圈（没有 toolResult 可渲染）。
+     */
+    private fun finalizeInterruptedTools(parsed: List<ChatMessage>) {
+        parsed.forEach { m ->
+            if (m.kind == ChatMessage.Kind.TOOL && m.toolStatus == "running") {
+                m.toolStatus = "error"
+                m.toolResult = "（会话中断，工具未执行完成）"
+            }
+        }
     }
 
     /** 直接读会话 jsonl 文件解析历史消息（与终端 pi 共享，能看到外部写入的最新内容）。 */
