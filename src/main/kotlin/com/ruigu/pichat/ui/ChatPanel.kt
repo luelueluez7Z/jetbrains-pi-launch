@@ -1552,13 +1552,36 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         // 当前生效挡位：优先用持久化配置（ctx-preset 扩展 session_start 已应用，状态栏 /400K 同源），
         // 未设置过才回退模型原始 contextWindow（models.json 默认）。
         val currentK = if (persistedK > 0) persistedK else (model?.contextWindow?.div(1000))?.toInt() ?: 0
+        val levels = readCtxPresetLevels()
         onEdt {
             callWeb("updateContextPresets", gson.toJson(JsonObject().apply {
                 addProperty("currentK", currentK)
                 addProperty("persistedK", persistedK)
-                add("presets", JsonArray().also { arr -> intArrayOf(200, 400, 1000).forEach { arr.add(it) } })
+                add("presets", JsonArray().also { arr -> levels.forEach { arr.add(it) } })
                 model?.let { addProperty("modelKey", "${it.provider}/${it.id}") }
             }))
+        }
+    }
+
+    /** 从 ctx-preset 扩展源码读取挡位表（PRESETS 的键，单位 K），动态跟随用户配置（如新增 512）。
+     *  路径 ~/.pi/agent/extensions/ctx-preset/index.ts，匹配 `"200": 200_000` 形式的纯数字键。 */
+    private fun readCtxPresetLevels(): List<Int> {
+        val fallback = listOf(200, 400, 1000)
+        return try {
+            val home = System.getProperty("user.home")
+            val file = Path.of(home, ".pi", "agent", "extensions", "ctx-preset", "index.ts")
+            if (!Files.exists(file)) return fallback
+            val src = Files.readString(file)
+            val pattern = Regex("\"(\\d+)\"\\s*:\\s*[\\d_]+")
+            val levels: List<Int> = pattern.findAll(src)
+                .map { it.groupValues[1].toIntOrNull() }
+                .filterNotNull()
+                .distinct()
+                .sorted()
+                .toList()
+            if (levels.isEmpty()) fallback else levels
+        } catch (e: Exception) {
+            fallback
         }
     }
 
@@ -1567,14 +1590,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
      *  立即生效，并把挡位写入 ~/.pi/agent/ctx-preset.json（下次 session_start 自动应用）。 */
     private fun handleSetContextPreset(content: String) {
         val level = content.trim().toIntOrNull()
-        val tokens = when (level) {
-            200 -> 200_000L
-            400 -> 400_000L
-            1000 -> 1_000_000L
-            else -> {
-                callWeb("addToast", "可用挡位: 200 / 400 / 1000", "error")
-                return
-            }
+        val levels = readCtxPresetLevels()
+        if (level == null || level !in levels) {
+            callWeb("addToast", "可用挡位: " + levels.joinToString(" / "), "error")
+            return
         }
         val model = currentModel.value ?: run {
             callWeb("addToast", "当前没有活动模型", "warning")
