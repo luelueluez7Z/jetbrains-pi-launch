@@ -1346,9 +1346,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     // 重载会话时丢弃未落定的流式状态（可能来自上一会话/中断的流式）
                     resetStreamingState()
                     messages.addAll(parsed)
-                    if (messages.isNotEmpty()) {
-                        addSystem("已恢复会话，共 ${messages.size} 条历史消息（与终端 pi 共享）")
-                    }
                     publishWebState()
                 }
                 return
@@ -1371,9 +1368,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 // 进程中断时最后一条工具可能没有配对 toolResult：标记中断
                 finalizeInterruptedTools(parsed)
                 messages.addAll(parsed)
-                if (messages.isNotEmpty()) {
-                    addSystem("已恢复会话，共 ${messages.size} 条历史消息（与终端 pi 共享）")
-                }
+                publishWebState()
             }
         }
     }
