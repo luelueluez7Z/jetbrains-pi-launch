@@ -70,6 +70,12 @@ import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbService
+import com.intellij.diff.DiffContentFactory
+import com.intellij.diff.DiffManager
+import com.intellij.diff.contents.DiffContent
+import com.intellij.diff.requests.SimpleDiffRequest
+import com.intellij.openapi.fileTypes.FileType
+import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Computable
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -406,6 +412,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             "delete_sessions" -> deleteSessions(content)
             "update_title" -> updateSessionTitle(content)
             "open_file" -> handleOpenFile(content)
+            "show_diff" -> handleShowDiff(content)
             "get_context_presets" -> publishContextPresets()
             "set_context_preset" -> handleSetContextPreset(content)
             "export_session", "toggle_favorite",
@@ -444,6 +451,54 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             return
         }
         openInEditor(vf, line, endLine)
+    }
+
+    /**
+     * 处理 show_diff：在 IDEA 中打开 Diff 窗口对比文件的修改前后内容。
+     * 前端已传 oldContent/newContent（工具卡中的修改前后内容），无需读磁盘。
+     * 对齐 cc-gui 的 SimpleDiffDisplayHandler：项目内路径校验 + DiffContentFactory 语法高亮。
+     */
+    private fun handleShowDiff(content: String) {
+        val params = try {
+            JsonParser.parseString(content).asJsonObject
+        } catch (e: Exception) {
+            LOG.warn("[PiChatDiag] show_diff 参数解析失败: " + e.message)
+            return
+        }
+        val filePath = params.str("filePath")
+        if (filePath.isBlank()) return
+        val oldContent = params.str("oldContent")
+        val newContent = params.str("newContent")
+        val title = params.str("title")
+
+        // 路径安全校验：仅允许项目内文件（防止前端传任意路径）
+        val basePath = project.basePath
+        if (basePath == null) {
+            LOG.warn("[PiChatDiag] show_diff 拒绝：项目无 basePath")
+            return
+        }
+        val normalizedPath = filePath.replace('\\', '/')
+        val normalizedBase = basePath.replace('\\', '/').trimEnd('/')
+        if (!normalizedPath.startsWith(normalizedBase, ignoreCase = true)) {
+            LOG.warn("[PiChatDiag] show_diff 拒绝项目外路径: " + filePath)
+            callWeb("addToast", "无法显示 Diff（文件不在项目中）：" + filePath, "error")
+            return
+        }
+
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            try {
+                val fileName = filePath.substringAfterLast('/').substringAfterLast('\\')
+                val fileType = FileTypeManager.getInstance().getFileTypeByFileName(fileName)
+                val left = DiffContentFactory.getInstance().create(project, oldContent, fileType)
+                val right = DiffContentFactory.getInstance().create(project, newContent, fileType)
+                val diffTitle = if (title.isNotBlank()) title else "$fileName 修改对比"
+                val request = SimpleDiffRequest(diffTitle, left, right, "修改前", "修改后")
+                DiffManager.getInstance().showDiff(project, request)
+            } catch (e: Exception) {
+                LOG.error("[PiChatDiag] show_diff 打开失败: " + e.message, e)
+            }
+        }
     }
 
     private fun resolveFileForOpen(path: String): VirtualFile? {
