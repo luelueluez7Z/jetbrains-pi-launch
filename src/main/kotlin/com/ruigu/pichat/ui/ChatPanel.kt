@@ -428,6 +428,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             "show_diff" -> handleShowDiff(content)
             "get_context_presets" -> publishContextPresets()
             "set_context_preset" -> handleSetContextPreset(content)
+            "set_plan_mode" -> handleSetPlanMode(content)
             "compact_session" -> handleCompactSession()
             "export_session", "toggle_favorite",
             "convert_to_cli_session", "create_new_tab" ->
@@ -888,6 +889,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 addProperty("reasoningEffort", currentThinking.value ?: "off")
                 add("piThinkingLevels", JsonArray().also { levels -> thinkingLevels.forEach { levels.add(it) } })
             }))
+            // Plan 模式状态（pi-plan-mode 扩展），会话恢复/切换后同步给前端 ModeSelect
+            callWeb("updatePlanMode", gson.toJson(JsonObject().apply {
+                addProperty("active", planModeText.isNotBlank())
+                addProperty("text", planModeText)
+            }))
         }
     }
 
@@ -1184,6 +1190,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private val balanceTail: String
         get() = if (balanceText.isNotBlank()) " · $balanceText" else ""
 
+    /** pi-plan-mode 扩展推送的 Plan 状态（plan active/ready/saved/implementing），空串表示未激活。 */
+    private var planModeText = ""
+    private val planTail: String
+        get() = if (planModeText.isNotBlank()) " · $planModeText" else ""
+
     private fun formatPiStatus(data: JsonObject): String {
         val tokens = data.getAsJsonObject("tokens")
         val context = data.getAsJsonObject("contextUsage")
@@ -1199,7 +1210,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         val contextPart = if (max > 0) "${formatTokenCount(used)}/${formatTokenCount(max)} (${formatPercent(percent)})" else "${formatTokenCount(used)}"
         val tail = " · $contextPart · cache ${formatPercent(cachePercent)} · ↑${formatTokenCount(output)} ↓${formatTokenCount(input)}"
         statsTail = tail
-        return "● $phase$tail$balanceTail"
+        return "● $phase$tail$planTail$balanceTail"
     }
 
     private fun JsonObject.longValue(key: String): Long =
@@ -2045,7 +2056,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         onEdt {
             busy.value = true
             // 保留统计尾部，不被纯 working 覆盖；随后异步刷新最新统计
-            statusText.value = "● 正在回复…$statsTail$balanceTail"
+            statusText.value = "● 正在回复…$statsTail$planTail$balanceTail"
             publishWebState()
             loadSessionStats()
         }
@@ -2145,9 +2156,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         onEdt {
             queueCount.value = total
             statusText.value = when {
-                busy.value -> "● 正在回复…$statsTail$balanceTail"
-                total > 0 -> "● 队列:$total$statsTail$balanceTail"
-                else -> "● 已连接$statsTail$balanceTail"
+                busy.value -> "● 正在回复…$statsTail$planTail$balanceTail"
+                total > 0 -> "● 队列:$total$statsTail$planTail$balanceTail"
+                else -> "● 已连接$statsTail$planTail$balanceTail"
             }
             publishWebState()
         }
@@ -2198,17 +2209,44 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         publishWebState()
     }
 
-    /** 处理扩展 setStatus：仅关心 provider-balance（套餐余额），追加到状态栏文本尾部。 */
+    /** 处理扩展 setStatus：provider-balance（套餐余额）与 plan-mode（Plan 状态）追加到状态栏尾部。 */
     private fun handleSetStatus(req: ExtensionUiRequest) {
         val key = req.raw().str("statusKey")
-        if (key != "provider-balance") return
-        balanceText = req.raw().str("statusText")
+        val text = req.raw().str("statusText")
+        when (key) {
+            "provider-balance" -> balanceText = text
+            "plan-mode" -> {
+                planModeText = text
+                // 推给前端 ModeSelect（当前 Plan 模式 + 子状态），会话恢复时也能同步
+                callWeb("updatePlanMode", gson.toJson(JsonObject().apply {
+                    addProperty("active", text.isNotBlank())
+                    addProperty("text", text)
+                }))
+            }
+            else -> return
+        }
         statusText.value = when {
-            busy.value -> "● 正在回复…$statsTail$balanceTail"
-            queueCount.value > 0 -> "● 队列:${queueCount.value}$statsTail$balanceTail"
-            else -> "● 已连接$statsTail$balanceTail"
+            busy.value -> "● 正在回复…$statsTail$planTail$balanceTail"
+            queueCount.value > 0 -> "● 队列:${queueCount.value}$statsTail$planTail$balanceTail"
+            else -> "● 已连接$statsTail$planTail$balanceTail"
         }
         publishWebState()
+    }
+
+    /** 切换 plan 模式：通过 pi-plan-mode 扩展命令 /plan start | /plan exit（RPC 支持扩展命令）。 */
+    private fun handleSetPlanMode(content: String) {
+        val mode = content.trim().removeSurrounding("\"")
+        when (mode) {
+            "plan" -> {
+                client.prompt("/plan start")
+                callWeb("addToast", "已进入 Plan 模式（只读探索 + 计划）", "info")
+            }
+            "normal" -> {
+                client.prompt("/plan exit")
+                callWeb("addToast", "已退出 Plan 模式", "info")
+            }
+            else -> callWeb("addToast", "未知模式: $mode", "error")
+        }
     }
 
     /**

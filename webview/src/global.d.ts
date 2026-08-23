@@ -539,6 +539,11 @@ interface Window {
   updateContextPresets?: (json: string) => void;
 
   /**
+   * Update plan mode state (pi-plan-mode 扩展) from backend
+   */
+  updatePlanMode?: (json: string) => void;
+
+  /**
    * Update dollar commands list (for $ autocomplete)
    */
   updateDollarCommands?: (json: string) => void;

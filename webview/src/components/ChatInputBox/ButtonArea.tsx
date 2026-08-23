@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ButtonAreaProps, CodexFastMode, PermissionMode, ReasoningEffort } from './types';
-import { CodexFastModeSelect, ConfigSelect, ContextPresetSelect, ModelSelect, ModeSelect, ProviderSelect, ReasoningSelect } from './selectors';
+import { CodexFastModeSelect, ConfigSelect, ContextPresetSelect, ModelSelect, ModeSelect, PlanModeSelect, ProviderSelect, ReasoningSelect } from './selectors';
 import { useCliModels } from '../../hooks/providers/useCliModels';
 import { useToolbarSelectorCompact } from './hooks/useToolbarSelectorCompact';
 import { resolveProviderModels } from './resolveProviderModels';
@@ -209,6 +209,7 @@ export const ButtonArea = ({
           onLongContextChange={isPi ? undefined : onLongContextChange}
         />
         <ReasoningSelect value={reasoningEffort} onChange={handleReasoningChange} selectedModel={selectedModel} currentProvider={currentProvider} piThinkingLevels={piThinkingLevels} />
+        {isPi && <PlanModeSelect />}
         {isPi && <ContextPresetSelect />}
         {isPi && (
           <button

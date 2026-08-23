@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.ruigu.pichat</id>
     <name>Pi Chat</name>
-    <version>0.2.26</version>
+    <version>0.2.27</version>
     <vendor email="dev@ruigu.local" url="https://ruigushop.com">RuiGu</vendor>
 
     <description><![CDATA[
