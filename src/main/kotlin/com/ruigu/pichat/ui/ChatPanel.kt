@@ -1198,6 +1198,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private val planTail: String
         get() = if (planModeText.isNotBlank()) " · $planModeText" else ""
 
+    /** ctx-preset 扩展推送的各模型原始 contextWindow（未被挡位覆盖），用于挡位过滤上限。 */
+    private val originalCtxMax = mutableMapOf<String, Long>()
+
     private fun formatPiStatus(data: JsonObject): String {
         val tokens = data.getAsJsonObject("tokens")
         val context = data.getAsJsonObject("contextUsage")
@@ -1808,15 +1811,26 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         } catch (e: Exception) {
             // 配置不可读则忽略
         }
-        // 当前生效挡位：优先用持久化配置（ctx-preset 扩展 session_start 已应用，状态栏 /400K 同源），
-        // 未设置过才回退模型原始 contextWindow（models.json 默认）。
-        val currentK = if (persistedK > 0) persistedK else (model?.contextWindow?.div(1000))?.toInt() ?: 0
+        // 挡位过滤上限：优先用 ctx-preset 扩展推送的模型原始 contextWindow（未被挡位覆盖，
+        // 避免已持久化挡位导致 get_available_models 返回覆盖值而低估上限），回退当前值。
+        val originalMaxK = model?.let { m -> originalCtxMax["${m.provider}/${m.id}"]?.div(1000) } ?: 0
+        val modelMaxK = if (originalMaxK > 0) originalMaxK else (model?.contextWindow ?: 0L) / 1000
         val levels = readCtxPresetLevels()
+        // 挡位跟随模型上限：只保留不超过模型原始 contextWindow 的挡位（与 TUI /ctx 选择器一致）。
+        // 模型原始上限未知（contextWindow<=0）时不过滤，展示全部挡位。
+        val effectiveLevels = if (modelMaxK > 0) levels.filter { it <= modelMaxK } else levels
+        // 无可用挡位（如模型仅 180k < 最小挡 256k）→ currentK=0 + presets 空，前端隐藏选择器（没必要调整）。
+        // currentK 优先显示当前实际生效值（pi 报告，可能已被挡位覆盖），回退持久化挡位/原始上限。
+        val currentModelK = (model?.contextWindow ?: 0L) / 1000
+        val currentK = if (effectiveLevels.isEmpty()) 0
+            else if (currentModelK > 0) currentModelK
+            else if (persistedK > 0) persistedK
+            else modelMaxK
         onEdt {
             callWeb("updateContextPresets", gson.toJson(JsonObject().apply {
                 addProperty("currentK", currentK)
                 addProperty("persistedK", persistedK)
-                add("presets", JsonArray().also { arr -> levels.forEach { arr.add(it) } })
+                add("presets", JsonArray().also { arr -> effectiveLevels.forEach { arr.add(it) } })
                 model?.let { addProperty("modelKey", "${it.provider}/${it.id}") }
             }))
         }
@@ -2237,6 +2251,19 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                         addProperty("done", true)
                     }))
                 }
+            }
+            "ctx-original-max" -> {
+                // ctx-preset 扩展推送的模型原始 contextWindow（未被挡位覆盖），
+                // 用于挡位过滤上限（不追加状态栏，直接返回）。
+                try {
+                    val obj = JsonParser.parseString(text).asJsonObject
+                    val key = obj.get("key").asString
+                    val max = obj.get("max").asLong
+                    if (key.isNotBlank() && max > 0) originalCtxMax[key] = max
+                } catch (e: Exception) {
+                    // 解析失败忽略
+                }
+                return
             }
             else -> return
         }

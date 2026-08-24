@@ -13,7 +13,8 @@ const DROPDOWN_STYLE: React.CSSProperties = {
   overflowX: 'hidden',
 };
 
-const DEFAULT_PRESETS = [200, 400, 1000];
+// 兜底挡位（与 ctx-preset 扩展 PRESETS 对齐；后端会推送真实挡位并覆盖）
+const DEFAULT_PRESETS = [256, 400, 1000];
 
 interface ContextPresetState {
   currentK: number;    // 当前模型生效的 contextWindow（k）
@@ -69,7 +70,9 @@ export const ContextPresetSelect = () => {
   }, []);
 
   const currentLabel = state.currentK > 0 ? `${state.currentK}K` : '—';
-  const isVisible = state.currentK > 0;
+  // 仅当有可用挡位时才显示选择器：模型 contextWindow 小于最小挡（如 180k < 256k）时
+  // 后端推 presets=[]，隐藏（没必要调整）。
+  const isVisible = state.presets.length > 0;
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
