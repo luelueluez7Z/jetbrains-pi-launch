@@ -544,6 +544,11 @@ interface Window {
   updatePlanMode?: (json: string) => void;
 
   /**
+   * Update prompt-optimize settings (editor-prompt-optimize 扩展) from backend
+   */
+  updateOptimizeSettings?: (json: string) => void;
+
+  /**
    * Update dollar commands list (for $ autocomplete)
    */
   updateDollarCommands?: (json: string) => void;

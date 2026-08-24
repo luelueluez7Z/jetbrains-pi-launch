@@ -24,9 +24,6 @@ export function registerSessionAndSdkCallbacks(
   const {
     addToast,
     setCurrentSessionId,
-    setSdkStatus,
-    setSdkStatusLoaded,
-    setSdkStatusError,
     currentSessionIdRef,
     setCustomSessionTitle,
     applyHistoryTitleLocal,
@@ -70,26 +67,15 @@ export function registerSessionAndSdkCallbacks(
 
   const originalUpdateDependencyStatus = window.updateDependencyStatus;
   window.updateDependencyStatus = (jsonStr: string) => {
+    // pi 无 npm SDK：后端推送的依赖状态不再存前端状态（settle 请求流程以正常收尾）
     try {
       const data = JSON.parse(jsonStr);
       if (!isDependencyStatusResponse(data)) {
-        console.error('[Frontend] Dependency status request failed:', data);
-        const error = typeof data.error === 'string' && data.error.trim()
-          ? data.error
-          : 'dependency_status_unavailable';
-        setSdkStatusLoaded(false);
-        setSdkStatusError(error);
         settleDependencyStatusRequest('error');
         return;
       }
-      setSdkStatus(data);
-      setSdkStatusLoaded(true);
-      setSdkStatusError(null);
       settleDependencyStatusRequest('ready');
-    } catch (error) {
-      console.error('[Frontend] Failed to parse dependency status:', error);
-      setSdkStatusLoaded(false);
-      setSdkStatusError(error instanceof Error ? error.message : 'invalid_dependency_status');
+    } catch {
       settleDependencyStatusRequest('error');
     }
     if (

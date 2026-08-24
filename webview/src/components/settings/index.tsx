@@ -4,6 +4,14 @@ import {
   writeSendBehaviorMode,
   type SendBehaviorMode,
 } from '../../utils/sendBehavior';
+import { sendBridgeEvent } from '../../utils/bridge';
+
+interface OptimizeSettingsState {
+  model: string;     // 当前配置的优化模型（provider/modelId），空=跟随当前会话模型
+  thinking: string;  // 当前配置的推理强度，空=跟随当前会话思考级别
+  models: { key: string; label: string }[];  // 可选模型列表
+  thinkingLevels: string[];  // 可用推理强度
+}
 
 interface SettingsViewProps {
   onClose: () => void;
@@ -87,6 +95,51 @@ const SettingsView = ({ onClose, onSendBehaviorModeChange }: SettingsViewProps) 
     writeSendBehaviorMode(mode);
     onSendBehaviorModeChange?.(mode);
   };
+
+  // 提示词优化配置：从后端读（editor-prompt-optimize.json），保存写回后端
+  const [optimize, setOptimize] = useState<OptimizeSettingsState>({
+    model: '',
+    thinking: '',
+    models: [],
+    thinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+  });
+
+  useEffect(() => {
+    sendBridgeEvent('get_optimize_settings');
+    window.updateOptimizeSettings = (json: string) => {
+      try {
+        const data = JSON.parse(json) as Partial<OptimizeSettingsState>;
+        setOptimize(prev => ({
+          model: typeof data.model === 'string' ? data.model : prev.model,
+          thinking: typeof data.thinking === 'string' ? data.thinking : prev.thinking,
+          models: Array.isArray(data.models) && data.models.length > 0 ? data.models : prev.models,
+          thinkingLevels:
+            Array.isArray(data.thinkingLevels) && data.thinkingLevels.length > 0
+              ? data.thinkingLevels
+              : prev.thinkingLevels,
+        }));
+      } catch {
+        // 忽略解析失败
+      }
+    };
+    return () => {
+      delete window.updateOptimizeSettings;
+    };
+  }, []);
+
+  const handleOptimizeModelChange = (key: string) => {
+    setOptimize(prev => ({ ...prev, model: key }));
+    sendBridgeEvent('set_optimize_settings', JSON.stringify({ model: key, thinking: optimize.thinking }));
+  };
+
+  const handleOptimizeThinkingChange = (level: string) => {
+    setOptimize(prev => ({ ...prev, thinking: level }));
+    sendBridgeEvent('set_optimize_settings', JSON.stringify({ model: optimize.model, thinking: level }));
+  };
+
+  const selectedOptimizeLabel =
+    optimize.models.find((m) => m.key === optimize.model)?.label
+    ?? (optimize.model ? optimize.model : '跟随当前会话模型');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-chat, #1e1e1e)' }}>
@@ -183,6 +236,74 @@ const SettingsView = ({ onClose, onSendBehaviorModeChange }: SettingsViewProps) 
                 <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>{o.hint}</div>
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* 提示词优化（editor-prompt-optimize 扩展） */}
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>提示词优化</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
+            点击输入框右上角的 💡 灯泡，将当前输入内容交给指定模型优化。
+          </div>
+
+          {/* 优化模型 */}
+          <div style={{ fontSize: 12, marginBottom: 6 }}>优化模型</div>
+          <select
+            value={optimize.model}
+            onChange={(e) => handleOptimizeModelChange(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              borderRadius: 6,
+              border: '1px solid var(--border-secondary, rgba(127,127,127,0.35))',
+              background: 'var(--bg-chat, #1e1e1e)',
+              color: 'var(--text-primary)',
+              fontSize: 13,
+            }}
+          >
+            <option value="">跟随当前会话模型</option>
+            {optimize.models.map((m) => (
+              <option key={m.key} value={m.key}>{m.label}</option>
+            ))}
+          </select>
+
+          {/* 推理强度 */}
+          <div style={{ fontSize: 12, margin: '10px 0 6px' }}>推理强度</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => handleOptimizeThinkingChange('')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: 6,
+                border: `1px solid ${optimize.thinking === '' ? 'var(--accent-primary, #4b8bf5)' : 'var(--border-secondary, rgba(127,127,127,0.35))'}`,
+                background: optimize.thinking === '' ? 'color-mix(in srgb, var(--accent-primary, #4b8bf5) 18%, transparent)' : 'transparent',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              跟随会话
+            </button>
+            {optimize.thinkingLevels.map((level) => (
+              <button
+                key={level}
+                onClick={() => handleOptimizeThinkingChange(level)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: `1px solid ${optimize.thinking === level ? 'var(--accent-primary, #4b8bf5)' : 'var(--border-secondary, rgba(127,127,127,0.35))'}`,
+                  background: optimize.thinking === level ? 'color-mix(in srgb, var(--accent-primary, #4b8bf5) 18%, transparent)' : 'transparent',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                }}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>
+            当前：{selectedOptimizeLabel} {optimize.thinking ? `· 推理 ${optimize.thinking}` : ''}
           </div>
         </div>
       </div>

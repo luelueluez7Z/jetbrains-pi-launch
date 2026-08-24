@@ -41,26 +41,14 @@ describe('useWindowCallbacks integration', () => {
     setUsageMaxTokens: vi.fn(),
     setSubagentHistories: vi.fn(),
     setPermissionMode: vi.fn(),
-    setCurrentProvider: vi.fn(),
-    setClaudePermissionMode: vi.fn(),
-    setCodexPermissionMode: vi.fn(),
-    setSelectedClaudeModel: vi.fn(),
-    setSelectedCodexModel: vi.fn(),
     setSelectedPiModel: vi.fn(),
     setPiThinkingLevels: vi.fn(),
-    setLongContextEnabled: vi.fn(),
     setReasoningEffort: vi.fn(),
-    setCodexFastMode: vi.fn(),
-    setProviderConfigVersion: vi.fn(),
     setActiveProviderConfig: vi.fn(),
-    setClaudeSettingsAlwaysThinkingEnabled: vi.fn(),
     setStreamingEnabledSetting: vi.fn(),
     setSendShortcut: vi.fn(),
     setAutoOpenFileEnabled: vi.fn(),
     setPermissionDialogTimeoutSeconds: vi.fn(),
-    setSdkStatus: vi.fn(),
-    setSdkStatusLoaded: vi.fn(),
-    setSdkStatusError: vi.fn(),
     setContextInfo: vi.fn(),
     setSelectedAgent: vi.fn(),
 
@@ -89,7 +77,6 @@ describe('useWindowCallbacks integration', () => {
     extractRawBlocks: () => [],
     getOrCreateStreamingAssistantIndex: () => 0,
     patchAssistantForStreaming: (msg: ClaudeMessage) => msg,
-    syncActiveProviderModelMapping: vi.fn(),
     openPermissionDialog: vi.fn(),
     openAskUserQuestionDialog: vi.fn(),
     forceClosePermissionDialog: vi.fn(),
@@ -146,45 +133,37 @@ describe('useWindowCallbacks integration', () => {
   };
 
   it('applies Java recovery state without echoing provider or model bridge commands', () => {
-    const currentProviderRef = { current: 'codex' };
-    const opts = createOptions({ currentProviderRef });
+    const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
     const bridgeCallsBeforeRestore = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.length;
 
     act(() => {
       window.applyBackendTabState?.(JSON.stringify({
-        provider: 'claude',
-        model: 'claude-opus-4-8[1m]',
+        provider: 'pi',
+        model: 'deepseek-v4-flash',
         permissionMode: 'default',
         reasoningEffort: 'high',
-        codexFastMode: 'normal',
+        piThinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
       }));
     });
 
-    expect(currentProviderRef.current).toBe('claude');
-    expect(opts.setCurrentProvider).toHaveBeenCalledWith('claude');
-    expect(opts.setSelectedClaudeModel).toHaveBeenCalledWith('claude-opus-4-8');
-    expect(opts.setLongContextEnabled).toHaveBeenCalledWith(true);
+    expect(opts.setSelectedPiModel).toHaveBeenCalledWith('deepseek-v4-flash');
     expect(opts.setReasoningEffort).toHaveBeenCalledWith('high');
-    expect(opts.setCodexFastMode).toHaveBeenCalledWith('normal');
-    expect(window.__CCGUI_RECOVERY_STATE_APPLIED__).toBe(true);
+    expect(opts.setPiThinkingLevels).toHaveBeenCalledWith(expect.arrayContaining(['high']));
     expect((window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.length).toBe(bridgeCallsBeforeRestore);
   });
 
   it('drains Java recovery state buffered before React callback registration', () => {
     window.__pendingBackendTabState = JSON.stringify({
-      provider: 'codex',
-      model: 'gpt-5.6-sol',
+      provider: 'pi',
+      model: 'glm-5.3',
       permissionMode: 'default',
-      codexFastMode: 'fast',
     });
     const opts = createOptions();
 
     renderHook(() => useWindowCallbacks(opts));
 
-    expect(opts.setCurrentProvider).toHaveBeenCalledWith('codex');
-    expect(opts.setSelectedCodexModel).toHaveBeenCalledWith('gpt-5.6-sol');
-    expect(opts.setCodexFastMode).toHaveBeenCalledWith('fast');
+    expect(opts.setSelectedPiModel).toHaveBeenCalledWith('glm-5.3');
     expect(window.__pendingBackendTabState).toBeUndefined();
   });
 
@@ -215,9 +194,7 @@ describe('useWindowCallbacks integration', () => {
       }));
     });
 
-    expect(opts.setSdkStatus).not.toHaveBeenCalled();
-    expect(opts.setSdkStatusLoaded).toHaveBeenCalledWith(false);
-    expect(opts.setSdkStatusError).toHaveBeenCalledWith('status unavailable');
+    // pi 无 npm SDK：只 settle 请求流程，不存储任何 SDK 状态
     expect(window.__dependencyStatusState).toBe('error');
   });
 
@@ -225,16 +202,13 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
     const status = {
-      'codex-sdk': { status: 'installed' },
+      'pi-cli': { status: 'installed' },
     };
 
     act(() => {
       window.updateDependencyStatus?.(JSON.stringify(status));
     });
 
-    expect(opts.setSdkStatus).toHaveBeenCalledWith(status);
-    expect(opts.setSdkStatusLoaded).toHaveBeenCalledWith(true);
-    expect(opts.setSdkStatusError).toHaveBeenCalledWith(null);
     expect(window.__dependencyStatusState).toBe('ready');
   });
 
@@ -246,8 +220,6 @@ describe('useWindowCallbacks integration', () => {
       window.updateDependencyStatus?.('{invalid');
     });
 
-    expect(opts.setSdkStatusLoaded).toHaveBeenCalledWith(false);
-    expect(opts.setSdkStatusError).toHaveBeenCalledWith(expect.any(String));
     expect(window.__dependencyStatusState).toBe('error');
   });
 

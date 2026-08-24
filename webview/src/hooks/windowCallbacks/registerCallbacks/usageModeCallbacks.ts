@@ -8,13 +8,7 @@
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
-import type { CodexFastMode, PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
-import {
-  has1MContextSuffix,
-  isValidPermissionMode,
-  normalizeClaudeModelId,
-  strip1MContextSuffix,
-} from '../../../components/ChatInputBox/types';
+import type { PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
 import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBootstrap';
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
 
@@ -24,25 +18,14 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     setUsageUsedTokens,
     setUsageMaxTokens,
     setPermissionMode,
-    setCurrentProvider,
-    setClaudePermissionMode,
-    setCodexPermissionMode,
-    setSelectedClaudeModel,
-    setSelectedCodexModel,
     setSelectedPiModel,
-    setLongContextEnabled,
     setReasoningEffort,
     setPiThinkingLevels,
-    setCodexFastMode,
-    setProviderConfigVersion,
     setActiveProviderConfig,
-    setClaudeSettingsAlwaysThinkingEnabled,
     setStreamingEnabledSetting,
     setSendShortcut,
     setAutoOpenFileEnabled,
     setPermissionDialogTimeoutSeconds,
-    currentProviderRef,
-    syncActiveProviderModelMapping,
   } = options;
 
   window.onUsageUpdate = (json) => {
@@ -84,82 +67,49 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     window.onUsageUpdate(pending);
   }
 
-  const updateMode = (mode?: PermissionMode, providerOverride?: string) => {
-    const activeProvider = providerOverride || currentProviderRef.current;
-    if (isValidPermissionMode(mode)) {
-      const nextMode: PermissionMode =
-        activeProvider === 'codex' && mode === 'plan' ? 'default' : mode;
-      setPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
-      if (activeProvider === 'codex') {
-        setCodexPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
-      } else {
-        setClaudePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
-      }
+  const updateMode = (mode?: PermissionMode) => {
+    if (mode === 'default' || mode === 'plan') {
+      setPermissionMode(mode);
     }
   };
 
   window.onModeChanged = (mode) => updateMode(mode as PermissionMode);
   window.onModeReceived = (mode) => updateMode(mode as PermissionMode);
 
+  // 插件只接 pi：模型选择直接更新 pi 模型
   window.onModelChanged = (modelId) => {
-    const provider = currentProviderRef.current;
-    if (provider === 'claude') {
-      setSelectedClaudeModel(normalizeClaudeModelId(modelId));
-    } else if (provider === 'codex') {
-      setSelectedCodexModel(modelId);
-    } else if (provider === 'pi') {
-      setSelectedPiModel(modelId);
-    }
+    setSelectedPiModel(modelId);
   };
 
-  window.onModelConfirmed = (modelId, provider) => {
-    if (provider === 'claude') {
-      setSelectedClaudeModel(normalizeClaudeModelId(modelId));
-    } else if (provider === 'codex') {
-      setSelectedCodexModel(modelId);
-    }
+  window.onModelConfirmed = (modelId, _provider) => {
+    setSelectedPiModel(modelId);
   };
 
   window.applyBackendTabState = (json: string) => {
     try {
       const state = JSON.parse(json) as Record<string, unknown>;
       const provider = state.provider;
-      if (provider !== 'claude' && provider !== 'codex' && provider !== 'pi') {
+      // 后端权威状态恢复：仅接受 pi（前端固定 provider）
+      if (provider !== 'pi') {
         throw new Error('invalid provider');
       }
 
-      // This is Java -> UI recovery state, not a user selection. Update the
-      // synchronous ref and React state without emitting set_provider/set_model.
-      currentProviderRef.current = provider;
-      setCurrentProvider(provider);
-
       if (typeof state.model === 'string' && state.model.length > 0) {
-        if (provider === 'claude') {
-          setSelectedClaudeModel(normalizeClaudeModelId(strip1MContextSuffix(state.model)));
-          setLongContextEnabled(has1MContextSuffix(state.model));
-        } else if (provider === 'codex') {
-          setSelectedCodexModel(state.model);
-        } else if (provider === 'pi') {
-          setSelectedPiModel(state.model);
-        }
+        setSelectedPiModel(state.model);
       }
 
-      updateMode(state.permissionMode as PermissionMode | undefined, provider);
+      updateMode(state.permissionMode as PermissionMode | undefined);
 
       const reasoningValues: ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
       if (reasoningValues.includes(state.reasoningEffort as ReasoningEffort)) {
         setReasoningEffort(state.reasoningEffort as ReasoningEffort);
       }
-      if (provider === 'pi' && Array.isArray(state.piThinkingLevels)) {
+      if (Array.isArray(state.piThinkingLevels)) {
         const levels = state.piThinkingLevels.filter((level): level is ReasoningEffort =>
           reasoningValues.includes(level as ReasoningEffort),
         );
         setPiThinkingLevels(levels);
       }
-      if (state.codexFastMode === 'normal' || state.codexFastMode === 'fast') {
-        setCodexFastMode(state.codexFastMode as CodexFastMode);
-      }
-      window.__CCGUI_RECOVERY_STATE_APPLIED__ = true;
     } catch (error) {
       console.error('[Frontend] Failed to apply backend tab state:', error);
     }
@@ -174,8 +124,6 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   window.updateActiveProvider = (jsonStr: string) => {
     try {
       const provider = JSON.parse(jsonStr);
-      syncActiveProviderModelMapping(provider);
-      setProviderConfigVersion((prev) => prev + 1);
       setActiveProviderConfig(provider);
     } catch (error) {
       console.error('[Frontend] Failed to parse active provider in App:', error);
@@ -183,22 +131,8 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   window.updateThinkingEnabled = (jsonStr: string) => {
-    const trimmed = (jsonStr || '').trim();
-    try {
-      const data = JSON.parse(trimmed);
-      if (typeof data === 'boolean') {
-        setClaudeSettingsAlwaysThinkingEnabled(data);
-        return;
-      }
-      if (data && typeof data.enabled === 'boolean') {
-        setClaudeSettingsAlwaysThinkingEnabled(data.enabled);
-        return;
-      }
-    } catch {
-      if (trimmed === 'true' || trimmed === 'false') {
-        setClaudeSettingsAlwaysThinkingEnabled(trimmed === 'true');
-      }
-    }
+    // cc-gui 的 Claude 专属开关，pi 无此概念——忽略
+    void jsonStr;
   };
 
   window.updateStreamingEnabled = (jsonStr: string) => {

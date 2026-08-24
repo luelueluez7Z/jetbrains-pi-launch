@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { CodexFastMode, DropdownItemData, DropdownPosition, PermissionMode, ReasoningEffort, SelectedAgent } from './types.js';
+import type { DropdownItemData, DropdownPosition, ReasoningEffort } from './types.js';
 import type { TooltipState } from './hooks/useTooltip.js';
 import { ButtonArea } from './ButtonArea.js';
 import { CompletionDropdown } from './Dropdown/index.js';
@@ -22,30 +22,14 @@ export function ChatInputBoxFooter({
   isLoading,
   isEnhancing,
   selectedModel,
-  permissionMode,
   currentProvider,
   reasoningEffort,
   piThinkingLevels,
-  codexFastMode,
   onSubmit,
   onStop,
-  onModeSelect,
   onModelSelect,
-  onProviderSelect,
   onReasoningChange,
-  onCodexFastModeChange,
   onEnhancePrompt,
-  alwaysThinkingEnabled,
-  onToggleThinking,
-  streamingEnabled,
-  onStreamingEnabledChange,
-  selectedAgent,
-  onAgentSelect,
-  onOpenAgentSettings,
-  onAddModel,
-  onClearAgent,
-  longContextEnabled = true,
-  onLongContextChange,
   fileCompletion,
   commandCompletion,
   agentCompletion,
@@ -59,30 +43,14 @@ export function ChatInputBoxFooter({
   isLoading: boolean;
   isEnhancing: boolean;
   selectedModel: string;
-  permissionMode: PermissionMode;
   currentProvider: string;
   reasoningEffort: ReasoningEffort;
   piThinkingLevels?: ReasoningEffort[];
-  codexFastMode?: CodexFastMode;
   onSubmit: () => void;
   onStop?: () => void;
-  onModeSelect?: (mode: PermissionMode) => void;
   onModelSelect?: (modelId: string) => void;
-  onProviderSelect?: (providerId: string) => void;
   onReasoningChange?: (effort: ReasoningEffort) => void;
-  onCodexFastModeChange?: (mode: CodexFastMode) => void;
   onEnhancePrompt: () => void;
-  alwaysThinkingEnabled?: boolean;
-  onToggleThinking?: (enabled: boolean) => void;
-  streamingEnabled?: boolean;
-  onStreamingEnabledChange?: (enabled: boolean) => void;
-  selectedAgent?: SelectedAgent | null;
-  onAgentSelect?: (agent: SelectedAgent) => void;
-  onOpenAgentSettings?: () => void;
-  onAddModel?: () => void;
-  onClearAgent: () => void;
-  longContextEnabled?: boolean;
-  onLongContextChange?: (enabled: boolean) => void;
   fileCompletion: CompletionController;
   commandCompletion: CompletionController;
   agentCompletion: CompletionController;
@@ -107,37 +75,21 @@ export function ChatInputBoxFooter({
 }) {
   return (
     <>
-      {/* Bottom button area */}
+      {/* Bottom button area（纯 pi） */}
       <ButtonArea
         disabled={disabled || isLoading}
         hasInputContent={hasInputContent}
         isLoading={isLoading}
         isEnhancing={isEnhancing}
         selectedModel={selectedModel}
-        permissionMode={permissionMode}
         currentProvider={currentProvider}
         reasoningEffort={reasoningEffort}
         piThinkingLevels={piThinkingLevels}
-        codexFastMode={codexFastMode}
         onSubmit={onSubmit}
         onStop={onStop}
-        onModeSelect={onModeSelect}
         onModelSelect={onModelSelect}
-        onProviderSelect={onProviderSelect}
         onReasoningChange={onReasoningChange}
-        onCodexFastModeChange={onCodexFastModeChange}
         onEnhancePrompt={onEnhancePrompt}
-        alwaysThinkingEnabled={alwaysThinkingEnabled}
-        onToggleThinking={onToggleThinking}
-        streamingEnabled={streamingEnabled}
-        onStreamingEnabledChange={onStreamingEnabledChange}
-        selectedAgent={selectedAgent}
-        onAgentSelect={(agent) => onAgentSelect?.(agent)}
-        onOpenAgentSettings={onOpenAgentSettings}
-        onAddModel={onAddModel}
-        onClearAgent={onClearAgent}
-        longContextEnabled={longContextEnabled}
-        onLongContextChange={onLongContextChange}
       />
 
       {/* @ file reference dropdown menu */}

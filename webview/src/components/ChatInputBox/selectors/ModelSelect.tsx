@@ -2,7 +2,6 @@ import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, use
 import { useTranslation } from 'react-i18next';
 import { AVAILABLE_MODELS, normalizeClaudeModelId, modelSupports1MContext, strip1MContextSuffix } from '../types';
 import type { ModelInfo } from '../types';
-import { readClaudeModelMapping } from '../../../utils/claudeModelMapping';
 import { ProviderModelIcon } from '../../shared/ProviderModelIcon';
 import { useDropdownPosition } from '../../../hooks/useDropdownPosition';
 import Switch from 'antd/es/switch';
@@ -188,7 +187,6 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
     || (strippedValue
       ? { id: strippedValue, label: strippedValue } as ModelInfo
       : models[0]);
-  const modelMapping = readClaudeModelMapping();
 
   useEffect(() => {
     setPinnedIds(readPinnedModelIds(currentProvider));
@@ -202,14 +200,6 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
   };
 
   const getModelLabel = (model: ModelInfo, show1MContext = false): string => {
-    const mappingKey = MODEL_ID_TO_MAPPING_KEY[model.id];
-    if (mappingKey) {
-      const mappedName = resolveMappedModelName(mappingKey, modelMapping);
-      if (mappedName) {
-        return append1MContextSuffix(mappedName, model.id, show1MContext);
-      }
-    }
-
     const defaultModel = DEFAULT_MODEL_MAP[model.id];
     const labelKey = MODEL_LABEL_KEYS[model.id];
     const hasCustomLabel = defaultModel && model.label && model.label !== defaultModel.label;
@@ -339,7 +329,7 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
       >
         <ProviderModelIcon
           providerId={currentProvider}
-          modelId={resolveModelIdForIcon(currentModel.id, modelMapping, MODEL_ID_TO_MAPPING_KEY)}
+          modelId={resolveModelIdForIcon(currentModel.id, {}, MODEL_ID_TO_MAPPING_KEY)}
           size={12}
           colored
         />
@@ -418,7 +408,7 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
                     >
                       <ProviderModelIcon
                         providerId={currentProvider}
-                        modelId={resolveModelIdForIcon(model.id, modelMapping, MODEL_ID_TO_MAPPING_KEY)}
+                        modelId={resolveModelIdForIcon(model.id, {}, MODEL_ID_TO_MAPPING_KEY)}
                         size={16}
                         colored
                       />

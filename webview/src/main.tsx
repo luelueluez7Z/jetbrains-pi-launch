@@ -12,7 +12,6 @@ import './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
-import { installRuntimeProviderDispatchers } from './utils/runtimeProviderCapabilities';
 import { sendBridgeEvent } from './utils/bridge';
 import { debugLog } from './utils/debug';
 import { forceWebviewRepaint } from './utils/forceWebviewRepaint';
@@ -38,11 +37,7 @@ if (!import.meta.env.DEV) {
   console.warn = noop;
 }
 
-// Install the runtime provider dispatcher exactly once so that every
-// consumer (Settings, RuntimeProviderSelect, …) receives provider events
-// through a deterministic subscriber registry instead of overriding
-// `window.update*Provider*` callbacks ad-hoc.
-installRuntimeProviderDispatchers();
+// 纯 pi：无 runtime provider 分发器（cc-gui 遗留）
 
 function createBridgeHeartbeatStarter() {
   let started = false;

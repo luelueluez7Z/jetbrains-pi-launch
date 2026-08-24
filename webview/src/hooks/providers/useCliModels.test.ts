@@ -1,8 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetCliModelsCacheForTests, useCliModels } from './useCliModels';
-import { CODEX_MODELS, KIMI_MODELS } from '../../components/ChatInputBox/types';
-import { installRuntimeProviderDispatchers } from '../../utils/runtimeProviderCapabilities';
 
 const sendBridgeEventMock = vi.hoisted(() => vi.fn());
 
@@ -16,11 +14,10 @@ function emitCliModels(payload: unknown) {
   });
 }
 
-describe('useCliModels', () => {
+describe('useCliModels（纯 pi）', () => {
   beforeEach(() => {
     sendBridgeEventMock.mockClear();
     __resetCliModelsCacheForTests();
-    installRuntimeProviderDispatchers();
   });
 
   afterEach(() => {
@@ -29,153 +26,88 @@ describe('useCliModels', () => {
     vi.useRealTimers();
   });
 
-  it('fetches the codex catalog when the codex provider is active', () => {
-    renderHook(() => useCliModels('codex'));
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'codex');
+  it('fetches the pi catalog when pi is active', () => {
+    renderHook(() => useCliModels('pi'));
+    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'pi');
   });
 
-  it('fetches the grok catalog when the grok provider is active', () => {
-    renderHook(() => useCliModels('grok'));
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'grok');
-  });
-
-  it('does not fetch for claude', () => {
+  it('does not fetch for non-pi providers', () => {
     renderHook(() => useCliModels('claude'));
     expect(sendBridgeEventMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to the static CODEX_MODELS list before the catalog arrives', () => {
-    const { result } = renderHook(() => useCliModels('codex'));
-    expect(result.current.cliModels).toEqual(CODEX_MODELS);
+  it('starts with an empty list before the catalog arrives', () => {
+    const { result } = renderHook(() => useCliModels('pi'));
+    expect(result.current.cliModels).toEqual([]);
     expect(result.current.cliModelsLoading).toBe(true);
   });
 
-  it('stores the codex catalog and defaultModel from the backend payload', () => {
-    const { result } = renderHook(() => useCliModels('codex'));
+  it('stores the pi catalog and defaultModel from the backend payload', () => {
+    const { result } = renderHook(() => useCliModels('pi'));
     emitCliModels({
       success: true,
-      provider: 'codex',
-      defaultModel: 'kimi-k3',
-      models: [{ id: 'kimi-k3', label: 'kimi-k3', description: 'kimi-k3' }],
+      provider: 'pi',
+      defaultModel: 'deepseek-v4-flash',
+      models: [{ id: 'deepseek::deepseek-v4-flash', label: 'DeepSeek V4 Flash' }],
     });
     expect(result.current.cliModels).toEqual([
-      { id: 'kimi-k3', label: 'kimi-k3', description: 'kimi-k3' },
+      { id: 'deepseek::deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
     ]);
-    expect(result.current.cliDefaultModel).toBe('kimi-k3');
+    expect(result.current.cliDefaultModel).toBe('deepseek-v4-flash');
     expect(result.current.cliModelsLoading).toBe(false);
     expect(result.current.cliModelsError).toBeNull();
   });
 
-  it('falls back to CODEX_MODELS when the codex payload has no models (official provider)', () => {
-    const { result } = renderHook(() => useCliModels('codex'));
+  it('records backend errors and supports manual retry', () => {
+    const { result } = renderHook(() => useCliModels('pi'));
+    // 传非空 models 避免 effect 自动重试清除 error；后端失败时通常保留旧目录
     emitCliModels({
-      success: true,
-      provider: 'codex',
-      defaultModel: 'gpt-5.6-sol',
-      models: [],
+      success: false,
+      provider: 'pi',
+      error: 'node missing',
+      models: [{ id: 'deepseek::deepseek-v4-flash', label: 'DeepSeek' }],
     });
-    expect(result.current.cliModels).toEqual(CODEX_MODELS);
-    expect(result.current.cliDefaultModel).toBe('gpt-5.6-sol');
-  });
-
-  it('keeps kimi fallback behavior intact', () => {
-    const { result } = renderHook(() => useCliModels('kimi'));
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'kimi');
-    expect(result.current.cliModels).toEqual(KIMI_MODELS);
-  });
-
-  it('records backend errors and supports manual retry for codex', () => {
-    const { result } = renderHook(() => useCliModels('codex'));
-    emitCliModels({ success: false, provider: 'codex', error: 'node missing', models: [] });
     expect(result.current.cliModelsError).toBe('node missing');
-    expect(result.current.cliModels).toEqual(CODEX_MODELS);
 
     sendBridgeEventMock.mockClear();
     act(() => {
-      result.current.refreshCliModels('codex');
+      result.current.refreshCliModels('pi');
     });
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'codex');
+    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'pi');
   });
 
-  it('refetches the codex catalog when the active codex provider changes', () => {
-    const { result, rerender } = renderHook(
-      ({ provider }) => useCliModels(provider),
-      { initialProps: { provider: 'codex' } },
-    );
-    emitCliModels({
-      success: true,
-      provider: 'codex',
-      defaultModel: 'kimi-k3',
-      models: [{ id: 'kimi-k3', label: 'kimi-k3' }],
-    });
-    expect(result.current.modelsByProvider.codex?.length).toBe(1);
-
-    sendBridgeEventMock.mockClear();
-    act(() => {
-      window.updateActiveCodexProvider?.(JSON.stringify({ id: 'other-provider' }));
-    });
-    // Cache cleared; effect refetches because the current provider is codex.
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'codex');
-    rerender({ provider: 'codex' });
-    expect(result.current.modelsByProvider.codex).toBeUndefined();
-  });
-
-  it('clears the codex cache without refetching when another provider is active', () => {
-    const { result } = renderHook(() => useCliModels('claude'));
-    emitCliModels({
-      success: true,
-      provider: 'codex',
-      defaultModel: 'kimi-k3',
-      models: [{ id: 'kimi-k3', label: 'kimi-k3' }],
-    });
-    expect(result.current.modelsByProvider.codex?.length).toBe(1);
-
-    sendBridgeEventMock.mockClear();
-    act(() => {
-      window.updateActiveCodexProvider?.(JSON.stringify({ id: 'other-provider' }));
-    });
-    expect(sendBridgeEventMock).not.toHaveBeenCalled();
-    expect(result.current.modelsByProvider.codex).toBeUndefined();
-  });
-
-  it('times out into an error state and falls back to static models', () => {
+  it('times out into an error state', () => {
     vi.useFakeTimers();
-    const { result } = renderHook(() => useCliModels('codex'));
+    const { result } = renderHook(() => useCliModels('pi'));
     act(() => {
       vi.advanceTimersByTime(16_000);
     });
     expect(result.current.cliModelsLoading).toBe(false);
     expect(result.current.cliModelsError).toBe('timeout');
-    expect(result.current.cliModels).toEqual(CODEX_MODELS);
+    expect(result.current.cliModels).toEqual([]);
   });
 
   it('reuses the module cache on remount so history→chat does not re-fetch', () => {
-    const first = renderHook(() => useCliModels('opencode'));
+    const first = renderHook(() => useCliModels('pi'));
     emitCliModels({
       success: true,
-      provider: 'opencode',
-      defaultModel: 'openai/gpt-5',
-      models: [
-        { id: 'opencode-default', label: 'OpenCode Default' },
-        { id: 'openai/gpt-5', label: 'gpt-5' },
-      ],
+      provider: 'pi',
+      defaultModel: 'deepseek-v4-flash',
+      models: [{ id: 'deepseek::deepseek-v4-flash', label: 'DeepSeek V4 Flash' }],
     });
     expect(first.result.current.cliModels.map((m) => m.id)).toEqual([
-      'opencode-default',
-      'openai/gpt-5',
+      'deepseek::deepseek-v4-flash',
     ]);
     first.unmount();
 
     sendBridgeEventMock.mockClear();
-    const second = renderHook(() => useCliModels('opencode'));
+    const second = renderHook(() => useCliModels('pi'));
     // Cache already has entries — no bridge round-trip on remount.
     expect(sendBridgeEventMock).not.toHaveBeenCalled();
     expect(second.result.current.cliModels.map((m) => m.id)).toEqual([
-      'opencode-default',
-      'openai/gpt-5',
+      'deepseek::deepseek-v4-flash',
     ]);
     expect(second.result.current.cliCatalogHasEntries).toBe(true);
-    expect(second.result.current.cliDefaultModel).toBe('openai/gpt-5');
     expect(second.result.current.cliModelsLoading).toBe(false);
   });
 });

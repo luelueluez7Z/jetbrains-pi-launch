@@ -2,8 +2,7 @@ import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
-import { EFFORT_SUPPORTED_CLAUDE_MODELS } from '../components/ChatInputBox/types';
-import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort, SelectedAgent, CodexFastMode } from '../components/ChatInputBox/types';
+import type { Attachment, ChatInputBoxHandle, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
 import type { SendBehavior } from '../utils/sendBehavior';
 import type { ViewMode } from './useModelProviderState';
@@ -13,26 +12,13 @@ import type { ViewMode } from './useModelProviderState';
  */
 export const NEW_SESSION_COMMANDS = new Set(['/new', '/clear', '/reset']);
 export const RESUME_COMMANDS = new Set(['/resume', '/continue']);
-export const PLAN_COMMANDS = new Set(['/plan']);
-
-function shouldSendReasoningEffort(provider: string, model: string): boolean {
-  if (provider !== 'claude') {
-    return true;
-  }
-  return EFFORT_SUPPORTED_CLAUDE_MODELS.has(model);
-}
 
 export interface UseMessageSenderOptions {
   t: TFunction;
   addToast: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
   currentProvider: string;
   selectedModel: string;
-  permissionMode: PermissionMode;
   reasoningEffort: ReasoningEffort;
-  codexFastMode: CodexFastMode;
-  selectedAgent: SelectedAgent | null;
-  sdkStatusLoading: boolean;
-  currentSdkInstalled: boolean;
   sentAttachmentsRef: RefObject<Map<string, Array<{ fileName: string; mediaType: string }>>>;
   chatInputRef: RefObject<ChatInputBoxHandle | null>;
   messagesContainerRef: RefObject<HTMLDivElement | null>;
@@ -43,10 +29,8 @@ export interface UseMessageSenderOptions {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoadingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
   setStreamingActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setSettingsInitialTab: React.Dispatch<React.SetStateAction<any>>;
   setCurrentView: React.Dispatch<React.SetStateAction<ViewMode>>;
   forceCreateNewSession: () => void;
-  handleModeSelect?: (mode: PermissionMode) => void;
 }
 
 /**
@@ -57,12 +41,7 @@ export function useMessageSender({
   addToast,
   currentProvider,
   selectedModel,
-  permissionMode,
   reasoningEffort,
-  codexFastMode,
-  selectedAgent,
-  sdkStatusLoading,
-  currentSdkInstalled,
   sentAttachmentsRef,
   chatInputRef,
   messagesContainerRef,
@@ -73,10 +52,8 @@ export function useMessageSender({
   setLoading,
   setLoadingStartTime,
   setStreamingActive,
-  setSettingsInitialTab,
   setCurrentView,
   forceCreateNewSession,
-  handleModeSelect,
 }: UseMessageSenderOptions) {
   /**
    * Check if the input is a new session command
@@ -106,17 +83,8 @@ export function useMessageSender({
       return true;
     }
 
-    // /plan - switch to plan mode (Claude only; Codex sends as normal text)
-    if (PLAN_COMMANDS.has(command) && currentProvider === 'claude') {
-      if (handleModeSelect) {
-        handleModeSelect('plan');
-        addToast(t('chat.planModeEnabled', { defaultValue: 'Plan mode enabled' }), 'info');
-      }
-      return true;
-    }
-
     return false;
-  }, [setCurrentView, handleModeSelect, currentProvider, addToast, t]);
+  }, [setCurrentView]);
 
   /**
    * Check for unimplemented slash commands
@@ -186,28 +154,17 @@ export function useMessageSender({
 
   /**
    * Send message to backend（behavior：流式中的发送语义，steer=打断引导 / followUp=排队后续）
+   * 纯 pi：无 agent/permissionMode 参数。
    */
   const sendMessageToBackend = useCallback((
     text: string,
     attachments: Attachment[] | undefined,
-    agentInfo: { id: string; name: string; prompt?: string } | null,
     fileTagsInfo: { displayPath: string; absolutePath: string }[] | null,
-    requestedPermissionMode: PermissionMode,
     behavior?: SendBehavior
   ) => {
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
-    const effectivePermissionMode: PermissionMode = currentProvider === 'codex' && requestedPermissionMode === 'plan'
-      ? 'default'
-      : requestedPermissionMode;
-    console.debug('[ModeSync][Frontend] send request mode', {
-      provider: currentProvider,
-      requestedMode: requestedPermissionMode,
-      effectiveMode: effectivePermissionMode,
-    });
 
-    const reasoningEffortPayload = shouldSendReasoningEffort(currentProvider, selectedModel)
-      ? { reasoningEffort }
-      : {};
+    const reasoningEffortPayload = { reasoningEffort };
 
     if (hasAttachments) {
       try {
@@ -218,11 +175,8 @@ export function useMessageSender({
             mediaType: a.mediaType,
             data: a.data,
           })),
-          agent: agentInfo,
           fileTags: fileTagsInfo,
-          permissionMode: effectivePermissionMode,
           ...reasoningEffortPayload,
-          codexFastMode,
           behavior,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
@@ -230,11 +184,8 @@ export function useMessageSender({
         console.error('[Frontend] Failed to serialize attachments payload', error);
         const fallbackPayload = JSON.stringify({
           text,
-          agent: agentInfo,
           fileTags: fileTagsInfo,
-          permissionMode: effectivePermissionMode,
           ...reasoningEffortPayload,
-          codexFastMode,
           behavior,
         });
         sendBridgeEvent('send_message', fallbackPayload);
@@ -242,16 +193,13 @@ export function useMessageSender({
     } else {
       const payload = JSON.stringify({
         text,
-        agent: agentInfo,
         fileTags: fileTagsInfo,
-        permissionMode: effectivePermissionMode,
         ...reasoningEffortPayload,
-        codexFastMode,
         behavior,
       });
       sendBridgeEvent('send_message', payload);
     }
-  }, [codexFastMode, currentProvider, selectedModel, reasoningEffort]);
+  }, [currentProvider, selectedModel, reasoningEffort]);
 
   /**
    * Execute message sending (from queue or directly)
@@ -262,21 +210,6 @@ export function useMessageSender({
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
 
     if (!text && !hasAttachments) return;
-
-    // Check SDK status
-    if (sdkStatusLoading) {
-      addToast(t('chat.sdkStatusLoading'), 'info');
-      return;
-    }
-    if (!currentSdkInstalled) {
-      addToast(
-        t('chat.sdkNotInstalled', { provider: currentProvider === 'codex' ? 'Codex' : 'Claude Code' }) + ' ' + t('chat.goInstallSdk'),
-        'warning'
-      );
-      setSettingsInitialTab('dependencies');
-      setCurrentView('settings');
-      return;
-    }
 
     // Build user message content blocks
     const userContentBlocks = buildUserContentBlocks(text, attachments);
@@ -326,13 +259,6 @@ export function useMessageSender({
     // Sync provider setting
     sendBridgeEvent('set_provider', currentProvider);
 
-    // Build agent info
-    const agentInfo = selectedAgent ? {
-      id: selectedAgent.id,
-      name: selectedAgent.name,
-      prompt: selectedAgent.prompt,
-    } : null;
-
     // Extract file tag info
     const fileTags = chatInputRef.current?.getFileTags() ?? [];
     const fileTagsInfo = fileTags.length > 0 ? fileTags.map(tag => ({
@@ -341,13 +267,9 @@ export function useMessageSender({
     })) : null;
 
     // Send message to backend
-    sendMessageToBackend(text, attachments, agentInfo, fileTagsInfo, permissionMode, behavior);
+    sendMessageToBackend(text, attachments, fileTagsInfo, behavior);
   }, [
-    sdkStatusLoading,
-    currentSdkInstalled,
     currentProvider,
-    permissionMode,
-    selectedAgent,
     buildUserContentBlocks,
     sendMessageToBackend,
     addToast,

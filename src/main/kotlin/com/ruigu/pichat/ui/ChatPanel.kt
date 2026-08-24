@@ -430,6 +430,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             "set_context_preset" -> handleSetContextPreset(content)
             "set_plan_mode" -> handleSetPlanMode(content)
             "compact_session" -> handleCompactSession()
+            "enhance_prompt" -> handleEnhancePrompt(content)
+            "get_optimize_settings" -> publishOptimizeSettings()
+            "set_optimize_settings" -> handleSetOptimizeSettings(content)
             "export_session", "toggle_favorite",
             "convert_to_cli_session", "create_new_tab" ->
                 callWeb("addToast", "该交互将在下一阶段接入 Pi", "info")
@@ -2223,6 +2226,18 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     addProperty("text", text)
                 }))
             }
+            "optimize-result" -> {
+                // editor-prompt-optimize 扩展的优化结果：回传前端 usePromptEnhancer 对话框
+                if (text.isBlank()) {
+                    callWeb("updateEnhancedPrompt", "{\"success\":false,\"error\":\"优化失败，未得到结果\",\"done\":true}")
+                } else {
+                    callWeb("updateEnhancedPrompt", gson.toJson(JsonObject().apply {
+                        addProperty("success", true)
+                        addProperty("enhancedPrompt", text)
+                        addProperty("done", true)
+                    }))
+                }
+            }
             else -> return
         }
         statusText.value = when {
@@ -2246,6 +2261,78 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 callWeb("addToast", "已退出 Plan 模式", "info")
             }
             else -> callWeb("addToast", "未知模式: $mode", "error")
+        }
+    }
+
+    /**
+     * 优化提示词：把输入框文本发给 pi 的 editor-prompt-optimize 扩展（/optimize_text 命令）
+     * 优化。结果是异步的：扩展完成后经 setStatus("optimize-result") 推送回来（见 handleSetStatus），
+     * 再转发给前端 usePromptEnhancer 对话框（updateEnhancedPrompt）。
+     */
+    private fun handleEnhancePrompt(content: String) {
+        val payload = try {
+            JsonParser.parseString(content).asJsonObject
+        } catch (_: Exception) {
+            null
+        }
+        val prompt = payload?.str("prompt") ?: content
+        if (prompt.isBlank()) {
+            callWeb("updateEnhancedPrompt", "{\"success\":false,\"error\":\"提示词为空\",\"done\":true}")
+            return
+        }
+        if (!client.isRunning()) {
+            callWeb("updateEnhancedPrompt", "{\"success\":false,\"error\":\"pi 未连接\",\"done\":true}")
+            return
+        }
+        client.prompt("/optimize_text $prompt")
+    }
+
+    /** 提示词优化配置：~/.pi/agent/editor-prompt-optimize.json（{model, thinking}，与 TUI 扩展共享）。 */
+    private val optimizeConfigFile: Path
+        get() = Path.of(System.getProperty("user.home"), ".pi", "agent", "editor-prompt-optimize.json")
+
+    /** 推给前端设置页：当前配置 + 可选模型列表 + 可用推理强度。 */
+    private fun publishOptimizeSettings() {
+        var model = ""
+        var thinking = ""
+        try {
+            if (Files.exists(optimizeConfigFile)) {
+                val o = gson.fromJson(Files.readString(optimizeConfigFile), JsonObject::class.java) ?: JsonObject()
+                model = o.str("model")
+                thinking = o.str("thinking")
+            }
+        } catch (_: Exception) {
+        }
+        callWeb("updateOptimizeSettings", gson.toJson(JsonObject().apply {
+            addProperty("model", model)
+            addProperty("thinking", thinking)
+            add("models", JsonArray().also { arr ->
+                models.forEach { m ->
+                    arr.add(JsonObject().apply {
+                        // 扩展 resolveModel 期望 provider/modelId（斜杠）
+                        addProperty("key", "${m.provider}/${m.id}")
+                        addProperty("label", "${m.provider} / ${m.name}")
+                    })
+                }
+            })
+            add("thinkingLevels", JsonArray().also { arr -> thinkingLevels.forEach { arr.add(it) } })
+        }))
+    }
+
+    /** 保存优化设置：写 editor-prompt-optimize.json（model + thinking），下次优化立即生效。 */
+    private fun handleSetOptimizeSettings(content: String) {
+        try {
+            val o = JsonParser.parseString(content).asJsonObject
+            val cfg = JsonObject()
+            val model = o.str("model")
+            val thinking = o.str("thinking")
+            if (model.isNotBlank()) cfg.addProperty("model", model)
+            if (thinking.isNotBlank()) cfg.addProperty("thinking", thinking)
+            Files.createDirectories(optimizeConfigFile.parent)
+            Files.writeString(optimizeConfigFile, gson.toJson(cfg))
+            callWeb("addToast", "提示词优化设置已保存", "success")
+        } catch (e: Exception) {
+            callWeb("addToast", "保存优化设置失败: ${e.message}", "error")
         }
     }
 

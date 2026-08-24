@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { sendBridgeEvent } from '../../utils/bridge';
-import { writeClaudeModelMapping } from '../../utils/claudeModelMapping';
 import type { ProviderConfig } from '../../types/provider';
 import type { SelectedAgent } from '../../components/ChatInputBox/types';
 
@@ -23,24 +22,6 @@ export function useProviderSettings({ addToast, t }: UseProviderSettingsOptions)
   const [autoOpenFileEnabled, setAutoOpenFileEnabled] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
   const [activeProviderConfig, setActiveProviderConfig] = useState<ProviderConfig | null>(null);
-  const [, setProviderConfigVersion] = useState(0);
-
-  const syncActiveProviderModelMapping = useCallback((provider?: ProviderConfig | null) => {
-    if (!provider || !provider.settingsConfig || !provider.settingsConfig.env) {
-      writeClaudeModelMapping({});
-      return;
-    }
-    const env = provider.settingsConfig.env as Record<string, unknown>;
-    const get = (key: string): string => (typeof env[key] === 'string' ? (env[key] as string) : '');
-    const mapping = {
-      main: get('ANTHROPIC_MODEL'),
-      fable: get('ANTHROPIC_DEFAULT_FABLE_MODEL'),
-      haiku: get('ANTHROPIC_DEFAULT_HAIKU_MODEL'),
-      sonnet: get('ANTHROPIC_DEFAULT_SONNET_MODEL'),
-      opus: get('ANTHROPIC_DEFAULT_OPUS_MODEL'),
-    };
-    writeClaudeModelMapping(mapping);
-  }, []);
 
   // Load previously-selected agent on mount, retrying until JCEF bridge is ready.
   useEffect(() => {
@@ -112,8 +93,6 @@ export function useProviderSettings({ addToast, t }: UseProviderSettingsOptions)
     setSelectedAgent,
     activeProviderConfig,
     setActiveProviderConfig,
-    setProviderConfigVersion,
-    syncActiveProviderModelMapping,
     handleAgentSelect,
     handleStreamingEnabledChange,
     handleSendShortcutChange,

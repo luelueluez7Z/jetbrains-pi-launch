@@ -21,7 +21,6 @@ import {
 import {
   NEW_SESSION_COMMANDS,
   RESUME_COMMANDS,
-  PLAN_COMMANDS,
 } from './hooks/useMessageSender';
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import {
@@ -33,11 +32,6 @@ import {
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
-import {
-  apply1MContextSuffix,
-  normalizeClaudeModelId,
-  strip1MContextSuffix,
-} from './components/ChatInputBox/types';
 import { ToastContainer } from './components/Toast';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatScreen } from './components/ChatScreen';
@@ -133,32 +127,19 @@ const App = () => {
 
   // (Toast helpers moved to UIStateContext)
 
-  // ── Model/Provider state ──
+  // ── Model/Provider state（纯 pi：currentProvider 固定 'pi'）──
   const {
-    currentProvider, selectedModel, permissionMode,
-    selectedAgent, sdkStatusLoading, sdkStatusError, currentSdkInstalled,
-    claudeSdkMeetsMinimum,
+    currentProvider, selectedModel,
     currentProviderRef,
-    activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
-    reasoningEffort, piThinkingLevels, codexFastMode, streamingEnabledSetting, sendShortcut, autoOpenFileEnabled,
-    longContextEnabled,
-    usagePercentage, usageUsedTokens, usageMaxTokens,
-    setPermissionMode, setCurrentProvider,
-    setClaudePermissionMode, setCodexPermissionMode,
-    setSelectedClaudeModel, setSelectedCodexModel,
-    setSelectedGrokModel, setSelectedKimiModel,
-    setSelectedOpenCodeModel, setSelectedPiModel,
-    setLongContextEnabled, setReasoningEffort, setCodexFastMode, setPiThinkingLevels,
-    setProviderConfigVersion, setActiveProviderConfig,
-    setClaudeSettingsAlwaysThinkingEnabled, setStreamingEnabledSetting,
-    setSendShortcut, setAutoOpenFileEnabled,
-    setSdkStatus, setSdkStatusLoaded, setSdkStatusError, retrySdkStatus, setSelectedAgent,
+    reasoningEffort, piThinkingLevels, sendShortcut,
+    setPermissionMode,
+    setSelectedPiModel,
+    setReasoningEffort, setPiThinkingLevels,
+    setActiveProviderConfig,
+    setStreamingEnabledSetting, setSendShortcut, setAutoOpenFileEnabled,
+    setSelectedAgent,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    syncActiveProviderModelMapping,
-    handleModeSelect, handleModelSelect, handleProviderSelect,
-    handleReasoningChange, handleCodexFastModeChange, handleAgentSelect, handleToggleThinking,
-    handleStreamingEnabledChange,
-    handleAutoOpenFileEnabledChange, handleLongContextChange,
+    handleModelSelect, handleReasoningChange,
   } = useModelProviderState({ addToast, t });
 
   // ── Global drag event interception ──
@@ -225,7 +206,6 @@ const App = () => {
     showNewSessionConfirm, showInterruptConfirm,
     suppressNextStatusToastRef,
     createNewSession, forceCreateNewSession,
-    forceCreateNewSessionWithProvider,
     handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions,
@@ -238,40 +218,11 @@ const App = () => {
     setTaskEvents,
     setSubagentHistories,
     clearToasts, addToast, t,
-    applyHistoryModel: (provider, model, agent) => {
-      // Switch provider first when history row differs, then apply model.
-      if (provider && provider !== currentProvider) {
-        handleProviderSelect(provider);
-      }
+    applyHistoryModel: (_provider, model, _agent) => {
+      // 插件只接 pi：provider/agent 忽略（历史会话均来自 pi），仅应用模型
       if (model) {
-        // handleModelSelect reads currentProvider; after provider switch state
-        // may not have flushed yet — send bridge + setter for the target provider.
-        if (provider === 'codex') {
-          setSelectedCodexModel(model);
-          sendBridgeEvent('set_model', model);
-        } else if (provider === 'grok') {
-          setSelectedGrokModel(model);
-          sendBridgeEvent('set_model', model);
-        } else if (provider === 'kimi') {
-          setSelectedKimiModel(model);
-          sendBridgeEvent('set_model', model);
-        } else if (provider === 'opencode') {
-          setSelectedOpenCodeModel(model);
-          sendBridgeEvent('set_model', model);
-        } else if (provider === 'pi') {
-          setSelectedPiModel(model);
-          sendBridgeEvent('set_model', model);
-        } else {
-          // claude (or unrecognized): apply the claude model directly —
-          // handleModelSelect reads currentProvider from a stale closure
-          // right after a provider switch.
-          const normalized = normalizeClaudeModelId(strip1MContextSuffix(model));
-          setSelectedClaudeModel(normalized);
-          sendBridgeEvent('set_model', apply1MContextSuffix(normalized, longContextEnabled));
-        }
-      }
-      if (agent && provider === 'claude') {
-        handleAgentSelect({ id: agent, name: agent, prompt: '' });
+        setSelectedPiModel(model);
+        sendBridgeEvent('set_model', model);
       }
     },
   });
@@ -284,13 +235,11 @@ const App = () => {
     setMessages, setStatus, setLoading, setLoadingStartTime,
     setIsThinking, setStreamingActive, setHistoryData,
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    setPermissionMode, setCurrentProvider, setClaudePermissionMode, setCodexPermissionMode,
-    setSelectedClaudeModel, setSelectedCodexModel, setSelectedPiModel,
-    setLongContextEnabled, setReasoningEffort, setCodexFastMode, setPiThinkingLevels,
-    setProviderConfigVersion, setActiveProviderConfig,
-    setClaudeSettingsAlwaysThinkingEnabled, setStreamingEnabledSetting,
+    setPermissionMode, setSelectedPiModel,
+    setReasoningEffort, setPiThinkingLevels,
+    setActiveProviderConfig,
+    setStreamingEnabledSetting,
     setSendShortcut, setAutoOpenFileEnabled,
-    setSdkStatus, setSdkStatusLoaded, setSdkStatusError,
     setContextInfo, setSelectedAgent,
     setSubagentHistories,
     setTaskEvents,
@@ -304,7 +253,6 @@ const App = () => {
     lastThinkingUpdateRef, thinkingUpdateTimeoutRef,
     findLastAssistantIndex, extractRawBlocks,
     getOrCreateStreamingAssistantIndex, patchAssistantForStreaming,
-    syncActiveProviderModelMapping,
     openPermissionDialog, openAskUserQuestionDialog,
     forceClosePermissionDialog, forceCloseAskUserQuestionDialog,
     customSessionTitleRef, currentSessionIdRef, updateHistoryTitle, applyHistoryTitleLocal,
@@ -320,27 +268,18 @@ const App = () => {
   } = useMessageProcessing({ messages, currentSessionId, t });
 
   // ── Message sender ──
-  // Wrap handleProviderSelect to also clear messages and input (like creating a new session)
-  const wrappedHandleProviderSelect = useCallback((providerId: string) => {
-    chatInputRef.current?.clear();
-    handleProviderSelect(providerId);
-    forceCreateNewSessionWithProvider(providerId);
-  }, [forceCreateNewSessionWithProvider, handleProviderSelect]);
-
   const {
     handleSubmit: hookHandleSubmit,
     executeMessage,
     interruptSession,
   } = useMessageSender({
     t, addToast,
-    currentProvider, selectedModel, permissionMode, reasoningEffort, selectedAgent, codexFastMode,
-    sdkStatusLoading, currentSdkInstalled,
+    currentProvider, selectedModel, reasoningEffort,
     sentAttachmentsRef, chatInputRef, messagesContainerRef,
     isUserAtBottomRef, userPausedRef, isStreamingRef,
     setMessages, setLoading, setLoadingStartTime, setStreamingActive,
-    setSettingsInitialTab, setCurrentView,
+    setCurrentView,
     forceCreateNewSession,
-    handleModeSelect,
   });
 
   // ── Message queue ──
@@ -410,12 +349,7 @@ const App = () => {
         setCurrentView('history');
         return;
       }
-      // /plan - switch to plan mode (Claude only; Codex sends as normal text)
-      if (PLAN_COMMANDS.has(command) && currentProvider === 'claude') {
-        handleModeSelect('plan');
-        addToast(t('chat.planModeEnabled', { defaultValue: 'Plan mode enabled' }), 'info');
-        return;
-      }
+      // /plan：作为普通命令发送给 pi（pi-plan-mode 扩展处理），不前端拦截
       // /context - handled locally even while loading
     }
     // If loading, add to queue
@@ -430,7 +364,7 @@ const App = () => {
     }
     // 其余（非流式 或 steer 打断引导）直接发送
     hookHandleSubmit(content, attachments, behavior);
-  }, [loading, streamingActive, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t]);
+  }, [loading, streamingActive, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, setCurrentView, addToast, t]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
@@ -447,34 +381,6 @@ const App = () => {
     currentSessionId,
     currentProvider,
   );
-
-  const handleNavigateToSdkSettings = useCallback(() => {
-    setSettingsInitialTab('dependencies');
-    setCurrentView('settings');
-  }, [setSettingsInitialTab, setCurrentView]);
-
-  // Warn once when the installed Claude SDK is below the Fable minimum (0.3.182)
-  // and the Fable tier is selected. Old CLIs don't recognize the 'fable' alias
-  // and pass it through as a literal model name, which 401s on third-party relays
-  // ("model fable" / "No available channel"). `claudeSdkMeetsMinimum` is `undefined`
-  // until the backend reports status or when the SDK isn't installed — never warn
-  // in those cases to avoid false positives.
-  const fableSdkWarningShownRef = useRef(false);
-  useEffect(() => {
-    if (
-      currentProvider === 'claude' &&
-      currentSdkInstalled &&
-      claudeSdkMeetsMinimum === false &&
-      /fable/i.test(selectedModel ?? '') &&
-      !fableSdkWarningShownRef.current
-    ) {
-      fableSdkWarningShownRef.current = true;
-      addToast(t('chat.sdkTooLowForFable'), 'warning', {
-        label: t('chat.updateSdk'),
-        onClick: handleNavigateToSdkSettings,
-      });
-    }
-  }, [currentProvider, currentSdkInstalled, claudeSdkMeetsMinimum, selectedModel, addToast, t, handleNavigateToSdkSettings]);
 
   // ── Render ──
   return (
@@ -529,37 +435,14 @@ const App = () => {
               inputAreaRef={inputAreaRef}
               onSubmit={handleSubmit}
               onInterrupt={interruptSession}
-              onProviderSelect={wrappedHandleProviderSelect}
               sendBehaviorMode={sendBehaviorMode}
               currentProvider={currentProvider}
               selectedModel={selectedModel}
-              permissionMode={permissionMode}
-              selectedAgent={selectedAgent}
-              sdkStatusLoading={sdkStatusLoading}
-              sdkStatusError={sdkStatusError}
-              onRetrySdkStatus={retrySdkStatus}
-              currentSdkInstalled={currentSdkInstalled}
-              activeProviderConfig={activeProviderConfig}
-              claudeSettingsAlwaysThinkingEnabled={claudeSettingsAlwaysThinkingEnabled}
               reasoningEffort={reasoningEffort}
               piThinkingLevels={piThinkingLevels}
-              codexFastMode={codexFastMode}
-              streamingEnabledSetting={streamingEnabledSetting}
               sendShortcut={sendShortcut}
-              autoOpenFileEnabled={autoOpenFileEnabled}
-              longContextEnabled={longContextEnabled}
-              usagePercentage={usagePercentage}
-              usageUsedTokens={usageUsedTokens}
-              usageMaxTokens={usageMaxTokens}
-              onModeSelect={handleModeSelect}
               onModelSelect={handleModelSelect}
-              onAgentSelect={handleAgentSelect}
               onReasoningChange={handleReasoningChange}
-              onCodexFastModeChange={handleCodexFastModeChange}
-              onToggleThinking={handleToggleThinking}
-              onStreamingEnabledChange={handleStreamingEnabledChange}
-              onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
-              onLongContextChange={handleLongContextChange}
               messageQueue={messageQueue}
                onRemoveFromQueue={dequeueMessage}
                onRecallFromQueue={handleRecallFromQueue}

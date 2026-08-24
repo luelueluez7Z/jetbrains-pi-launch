@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ButtonAreaProps, CodexFastMode, PermissionMode, ReasoningEffort } from './types';
-import { CodexFastModeSelect, ConfigSelect, ContextPresetSelect, ModelSelect, ModeSelect, PlanModeSelect, ProviderSelect, ReasoningSelect } from './selectors';
+import type { ButtonAreaProps, ReasoningEffort } from './types';
+import { ContextPresetSelect, ModelSelect, PlanModeSelect, ReasoningSelect } from './selectors';
 import { useCliModels } from '../../hooks/providers/useCliModels';
 import { useToolbarSelectorCompact } from './hooks/useToolbarSelectorCompact';
 import { resolveProviderModels } from './resolveProviderModels';
@@ -9,37 +9,23 @@ import { sendBridgeEvent } from '../../utils/bridge';
 
 /**
  * ButtonArea - Bottom toolbar component
- * Contains mode selector, model selector, attachment button, prompt enhancer button, send/stop button
+ * Contains model selector, reasoning selector, plan mode, context preset, compact button,
+ * prompt enhancer (💡), and send/stop button. 纯 pi：无 provider/mode 切换。
  */
 export const ButtonArea = ({
   disabled = false,
   hasInputContent = false,
   isLoading = false,
   isEnhancing = false,
-  selectedModel = 'claude-sonnet-4-7',
-  permissionMode = 'default',
-  currentProvider = 'claude',
+  selectedModel = '',
+  currentProvider = 'pi',
   reasoningEffort = 'high',
   piThinkingLevels = [],
-  codexFastMode = 'normal',
   onSubmit,
   onStop,
-  onModeSelect,
   onModelSelect,
-  onProviderSelect,
   onReasoningChange,
-  onCodexFastModeChange,
   onEnhancePrompt,
-  alwaysThinkingEnabled = false,
-  onToggleThinking,
-  streamingEnabled = true,
-  onStreamingEnabledChange,
-  selectedAgent,
-  onAgentSelect,
-  onOpenAgentSettings,
-  onAddModel,
-  longContextEnabled = true,
-  onLongContextChange,
 }: ButtonAreaProps) => {
   const { t } = useTranslation();
   const isPi = currentProvider === 'pi';
@@ -50,28 +36,19 @@ export const ButtonArea = ({
   // const fileInputRef = useRef<HTMLInputElement>(null);
   const { cliModels, cliModelsLoading, cliModelsError, cliDefaultModel, cliCatalogHasEntries, refreshCliModels } = useCliModels(currentProvider);
 
-  // Select model list based on current provider. Pi models come from the
-  // backend catalog (updateModels); localStorage custom models / claude mapping
-  // were cc-gui concepts and are removed.
+  // 模型列表来源（纯 pi）：后端推送的 cliModels。
   const availableModels = useMemo(() => {
     return resolveProviderModels({
       provider: currentProvider,
       cliModels,
-      cliCatalogHasEntries,
     });
-  }, [currentProvider, cliModels, cliCatalogHasEntries]);
+  }, [currentProvider, cliModels]);
 
-  // When a dynamic model catalog arrives, ensure selection is a real entry.
+  // 纯 pi：无 provider 切换（cc-gui 遗留的静态目录已移除）
   useEffect(() => {
-    const isDynamicProvider = currentProvider === 'kimi' || currentProvider === 'opencode'
-      || currentProvider === 'pi' || currentProvider === 'codex'
-      || currentProvider === 'grok';
+    const isDynamicProvider = currentProvider === 'pi';
     if (!isDynamicProvider) return;
-    // Only correct once a *real* catalog arrived. Static fallback lists
-    // (OPENCODE_MODELS = just "opencode-default", CODEX built-ins, …) must not
-    // clobber the user's choice — especially when ChatScreen remounts after
-    // leaving history and briefly shows the fallback before the cache/fetch
-    // lands.
+    // 后端真实目录到达后才校正选中项，避免空列表时闪回。
     if (!cliCatalogHasEntries) return;
     if (cliModelsLoading) return;
     if (!availableModels.length || !onModelSelect) return;
@@ -106,13 +83,6 @@ export const ButtonArea = ({
   }, [onStop]);
 
   /**
-   * Handle mode selection
-   */
-  const handleModeSelect = useCallback((mode: PermissionMode) => {
-    onModeSelect?.(mode);
-  }, [onModeSelect]);
-
-  /**
    * Handle model selection
    */
   const handleModelSelect = useCallback((modelId: string) => {
@@ -120,25 +90,11 @@ export const ButtonArea = ({
   }, [onModelSelect]);
 
   /**
-   * Handle provider selection
-   */
-  const handleProviderSelect = useCallback((providerId: string) => {
-    onProviderSelect?.(providerId);
-  }, [onProviderSelect]);
-
-  /**
    * Handle reasoning depth selection
    */
   const handleReasoningChange = useCallback((effort: ReasoningEffort) => {
     onReasoningChange?.(effort);
   }, [onReasoningChange]);
-
-  /**
-   * Handle Codex speed mode selection
-   */
-  const handleCodexFastModeChange = useCallback((mode: CodexFastMode) => {
-    onCodexFastModeChange?.(mode);
-  }, [onCodexFastModeChange]);
 
   /**
    * Handle enhance prompt button click
@@ -155,10 +111,7 @@ export const ButtonArea = ({
   const selectorContentKey = [
     currentProvider,
     selectedModel,
-    permissionMode,
     reasoningEffort,
-    codexFastMode,
-    selectedAgent?.id ?? '',
     cliModelsLoading ? 'loading' : 'ready',
   ].join('|');
   const selectorsCompact = useToolbarSelectorCompact(
@@ -174,28 +127,8 @@ export const ButtonArea = ({
       className={`button-area${selectorsCompact ? ' button-area--compact' : ''}`}
       data-provider={currentProvider}
     >
-      {/* Left side: selectors */}
+      {/* Left side: selectors（纯 pi：模型 / 推理强度 / Plan / 上下文挡位 / 压缩） */}
       <div ref={buttonAreaLeftRef} className="button-area-left">
-        {!isPi && (
-          <ConfigSelect
-            alwaysThinkingEnabled={alwaysThinkingEnabled}
-            onToggleThinking={onToggleThinking}
-            streamingEnabled={streamingEnabled}
-            onStreamingEnabledChange={onStreamingEnabledChange}
-            selectedAgent={selectedAgent}
-            onAgentSelect={onAgentSelect}
-            onOpenAgentSettings={onOpenAgentSettings}
-            currentProvider={currentProvider}
-          />
-        )}
-        {!isPi && (
-          <ProviderSelect
-            value={currentProvider}
-            onChange={handleProviderSelect}
-            compact
-          />
-        )}
-        {!isPi && <ModeSelect value={permissionMode} onChange={handleModeSelect} provider={currentProvider} />}
         <ModelSelect
           value={selectedModel}
           onChange={handleModelSelect}
@@ -204,9 +137,6 @@ export const ButtonArea = ({
           loading={cliModelsLoading}
           error={cliModelsError}
           onRetry={() => refreshCliModels(currentProvider)}
-          onAddModel={isPi ? undefined : onAddModel}
-          longContextEnabled={isPi ? false : longContextEnabled}
-          onLongContextChange={isPi ? undefined : onLongContextChange}
         />
         <ReasoningSelect value={reasoningEffort} onChange={handleReasoningChange} selectedModel={selectedModel} currentProvider={currentProvider} piThinkingLevels={piThinkingLevels} />
         {isPi && <PlanModeSelect />}
@@ -223,26 +153,19 @@ export const ButtonArea = ({
             <span className="codicon codicon-archive" />
           </button>
         )}
-        {!isPi && currentProvider === 'codex' && (
-          <CodexFastModeSelect value={codexFastMode} onChange={handleCodexFastModeChange} />
-        )}
       </div>
 
       {/* Right side: tool buttons */}
       <div ref={buttonAreaRightRef} className="button-area-right">
-        {!isPi && <div className="button-divider" />}
-
-        {/* Enhance prompt button */}
-        {!isPi && (
-          <button
-            className="enhance-prompt-button has-tooltip"
-            onClick={handleEnhanceClick}
-            disabled={disabled || !hasInputContent || isLoading || isEnhancing}
-            data-tooltip={`${t('promptEnhancer.tooltip')} (${t('promptEnhancer.shortcut')})`}
-          >
-            <span className={`codicon ${isEnhancing ? 'codicon-loading codicon-modifier-spin' : 'codicon-sparkle'}`} />
-          </button>
-        )}
+        {/* Enhance prompt button（优化提示词：pi 模式走 editor-prompt-optimize 扩展） */}
+        <button
+          className="enhance-prompt-button has-tooltip"
+          onClick={handleEnhanceClick}
+          disabled={disabled || !hasInputContent || isLoading || isEnhancing}
+          data-tooltip="优化提示词"
+        >
+          <span className={`codicon ${isEnhancing ? 'codicon-loading codicon-modifier-spin' : 'codicon-light-bulb'}`} />
+        </button>
 
         {/* Send/Stop button */}
         {isLoading ? (

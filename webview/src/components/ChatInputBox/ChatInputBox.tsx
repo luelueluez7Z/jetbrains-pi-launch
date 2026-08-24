@@ -12,7 +12,6 @@ import { useTranslation } from 'react-i18next';
 import type {
   ChatInputBoxHandle,
   ChatInputBoxProps,
-  PermissionMode,
 } from './types.js';
 import { ChatInputBoxHeader } from './ChatInputBoxHeader.js';
 import { ChatInputBoxFooter } from './ChatInputBoxFooter.js';
@@ -76,13 +75,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
   (
     {
       isLoading = false,
-      selectedModel = 'claude-sonnet-4-7',
-      permissionMode = 'default',
-      currentProvider = 'claude',
-      usagePercentage = 0,
-      usageUsedTokens,
-      usageMaxTokens,
-      showUsage = true,
+      selectedModel = '',
+      currentProvider = 'pi',
       attachments: externalAttachments,
       placeholder = '', // Will be passed from parent via t('chat.inputPlaceholder')
       disabled = false,
@@ -90,45 +84,18 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onSubmit,
       onStop,
       onInput,
-      onAddAttachment,
       onRemoveAttachment,
-      onModeSelect,
       onModelSelect,
-      onProviderSelect,
       reasoningEffort = 'high',
       status,
       piThinkingLevels = [],
       onReasoningChange,
-      codexFastMode = 'normal',
-      onCodexFastModeChange,
-      activeFile,
-      selectedLines,
-      onClearContext,
-      alwaysThinkingEnabled,
-      onToggleThinking,
-      streamingEnabled,
-      onStreamingEnabledChange,
       sendShortcut = 'enter',
       sendBehaviorMode = 'steerOnEnter',
-      selectedAgent,
-      onAgentSelect,
-      onOpenAgentSettings,
-      onOpenModelSettings,
-      hasMessages = false,
-      onRewind,
-      statusPanelExpanded = true,
-      onToggleStatusPanel,
-      sdkInstalled = true, // Default to true to avoid disabling input box on initial state
-      sdkStatusLoading = false, // SDK status loading state
-      onInstallSdk,
       addToast,
       messageQueue,
       onRemoveFromQueue,
       onRecallFromQueue,
-      autoOpenFileEnabled,
-      onAutoOpenFileEnabledChange,
-      longContextEnabled = true,
-      onLongContextChange,
     }: ChatInputBoxProps,
     ref: React.ForwardedRef<ChatInputBoxHandle>
   ) => {
@@ -139,11 +106,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       attachments,
       setInternalAttachments,
       clearAttachmentsDraft,
-      handleAddAttachment,
       handleRemoveAttachment,
     } = useChatInputAttachmentsCoordinator({
       externalAttachments,
-      onAddAttachment,
       onRemoveAttachment,
     });
 
@@ -267,8 +232,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       closeAllCompletionsRef,
       handleInputRef,
       currentProvider,
-      onAgentSelect,
-      onOpenAgentSettings,
     });
 
     // Performance optimization: Debounced onInput callback
@@ -443,9 +406,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       invalidateCache,
       attachments,
       isLoading,
-      sdkStatusLoading,
-      sdkInstalled,
-      currentProvider,
       clearInput,
       cancelPendingInput: () => {
         debouncedOnInput.cancel();
@@ -459,7 +419,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       dollarCommandCompletion,
       recordInputHistory,
       onSubmit,
-      onInstallSdk,
       addToast,
       t,
     });
@@ -494,8 +453,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       focusInput,
       applyInlineCompletion,
       handleCtxMenuCut,
-      handleClearFileContext,
-      handleRequestEnableFileContext,
     } = useChatInputSelectionController({
       ref,
       editableRef,
@@ -510,16 +467,12 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       inlineCompletion,
       handleInput,
       ctxMenu,
-      onClearContext,
-      onAutoOpenFileEnabledChange,
     });
 
     const { onKeyDown: handleKeyDown, onKeyUp: handleKeyUp } = useKeyboardHandler({
       isComposingRef,
       lastCompositionEndTimeRef,
       sendShortcut,
-      sdkStatusLoading,
-      sdkInstalled,
       fileCompletion,
       commandCompletion,
       agentCompletion,
@@ -591,16 +544,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     });
 
     /**
-     * Handle mode select
-     */
-    const handleModeSelect = useCallback(
-      (mode: PermissionMode) => {
-        onModeSelect?.(mode);
-      },
-      [onModeSelect]
-    );
-
-    /**
      * Handle model select
      */
     const handleModelSelect = useCallback(
@@ -649,28 +592,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         <ResizeHandles getHandleProps={getHandleProps} nudge={nudge} />
 
         <ChatInputBoxHeader
-          currentProvider={currentProvider}
           attachments={attachments}
           onRemoveAttachment={handleRemoveAttachment}
-          activeFile={activeFile}
-          selectedLines={selectedLines}
-          usagePercentage={usagePercentage}
-          usageUsedTokens={usageUsedTokens}
-          usageMaxTokens={usageMaxTokens}
-          showUsage={showUsage}
-          onClearContext={handleClearFileContext}
-          onAddAttachment={handleAddAttachment}
-          selectedAgent={selectedAgent}
-          onClearAgent={() => onAgentSelect?.(null)}
-          hasMessages={hasMessages}
-          onRewind={onRewind}
-          statusPanelExpanded={statusPanelExpanded}
-          onToggleStatusPanel={onToggleStatusPanel}
           messageQueue={messageQueue}
           onRemoveFromQueue={onRemoveFromQueue}
           onRecallFromQueue={onRecallFromQueue}
-          autoOpenFileEnabled={autoOpenFileEnabled}
-          onRequestEnableFileContext={handleRequestEnableFileContext}
         />
 
         {currentProvider === 'pi' && <PiStatusBar status={status} />}
@@ -753,37 +679,20 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
             />
           )}
         </div>
-
         <ChatInputBoxFooter
           disabled={disabled}
           hasInputContent={hasContent || attachments.length > 0}
           isLoading={isLoading}
           isEnhancing={isEnhancing}
           selectedModel={selectedModel}
-          permissionMode={permissionMode}
           currentProvider={currentProvider}
           reasoningEffort={reasoningEffort}
           piThinkingLevels={piThinkingLevels}
-          codexFastMode={codexFastMode}
           onSubmit={handleSubmit}
           onStop={onStop}
-          onModeSelect={handleModeSelect}
           onModelSelect={handleModelSelect}
-          onProviderSelect={onProviderSelect}
           onReasoningChange={onReasoningChange}
-          onCodexFastModeChange={onCodexFastModeChange}
           onEnhancePrompt={handleEnhancePrompt}
-          alwaysThinkingEnabled={alwaysThinkingEnabled}
-          onToggleThinking={onToggleThinking}
-          streamingEnabled={streamingEnabled}
-          onStreamingEnabledChange={onStreamingEnabledChange}
-          selectedAgent={selectedAgent}
-          onAgentSelect={(agent) => onAgentSelect?.(agent)}
-          onOpenAgentSettings={onOpenAgentSettings}
-          onAddModel={onOpenModelSettings}
-          onClearAgent={() => onAgentSelect?.(null)}
-          longContextEnabled={longContextEnabled}
-          onLongContextChange={onLongContextChange}
           fileCompletion={fileCompletion}
           commandCompletion={commandCompletion}
           agentCompletion={agentCompletion}

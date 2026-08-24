@@ -24,11 +24,6 @@ vi.mock('./ContentBlockRenderer', () => ({
   ),
 }));
 
-vi.mock('./ProviderNotConfiguredCard', () => ({
-  ProviderNotConfiguredCard: () => <div data-testid="provider-not-configured-card">provider-card</div>,
-  isProviderNotConfiguredError: () => false,
-}));
-
 const t = ((key: string, opts?: Record<string, string>) => {
   const translations: Record<string, string> = {
     'markdown.copyMessage': '复制消息',

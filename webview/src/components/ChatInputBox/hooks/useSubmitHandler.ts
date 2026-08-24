@@ -11,9 +11,6 @@ export interface UseSubmitHandlerOptions {
   getTextContent: () => string;
   attachments: Attachment[];
   isLoading: boolean;
-  sdkStatusLoading: boolean;
-  sdkInstalled: boolean;
-  currentProvider: string;
   clearInput: () => void;
   /** Cancel any pending debounced input callbacks to prevent stale values from refilling the input */
   cancelPendingInput: () => void;
@@ -46,9 +43,6 @@ export function useSubmitHandler({
   getTextContent,
   attachments,
   isLoading,
-  sdkStatusLoading,
-  sdkInstalled,
-  currentProvider,
   clearInput,
   cancelPendingInput,
   invalidateCache,
@@ -61,7 +55,6 @@ export function useSubmitHandler({
   dollarCommandCompletion,
   recordInputHistory,
   onSubmit,
-  onInstallSdk,
   addToast,
   t,
 }: UseSubmitHandlerOptions) {
@@ -71,24 +64,6 @@ export function useSubmitHandler({
       invalidateCache();
       const content = getTextContent();
       const cleanContent = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-
-      if (sdkStatusLoading) {
-        addToast?.(t('chat.sdkStatusLoading'), 'info');
-        return;
-      }
-
-      if (!sdkInstalled) {
-        addToast?.(
-          t('chat.sdkNotInstalled', {
-            provider: currentProvider === 'codex' ? 'Codex' : 'Claude Code',
-          }) +
-            ' ' +
-            t('chat.goInstallSdk'),
-          'warning'
-        );
-        onInstallSdk?.();
-        return;
-      }
 
       if (!cleanContent && attachments.length === 0) return;
 
@@ -123,9 +98,6 @@ export function useSubmitHandler({
       invalidateCache,
       attachments,
       isLoading,
-      sdkStatusLoading,
-      sdkInstalled,
-      currentProvider,
       clearInput,
       cancelPendingInput,
       externalAttachments,
@@ -137,7 +109,6 @@ export function useSubmitHandler({
       dollarCommandCompletion,
       recordInputHistory,
       onSubmit,
-      onInstallSdk,
       addToast,
       t,
     ]

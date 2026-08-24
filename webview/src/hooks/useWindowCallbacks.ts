@@ -3,7 +3,6 @@ import type { TFunction } from 'i18next';
 import type { MutableRefObject, RefObject } from 'react';
 import type { ClaudeMessage, ClaudeRawMessage, HistoryData, SubagentHistoryResponse, TaskEventMap } from '../types';
 import type {
-  CodexFastMode,
   PermissionMode,
   ReasoningEffort,
   SelectedAgent,
@@ -43,26 +42,14 @@ export interface UseWindowCallbacksOptions {
   setUsageUsedTokens: React.Dispatch<React.SetStateAction<number | undefined>>;
   setUsageMaxTokens: React.Dispatch<React.SetStateAction<number | undefined>>;
   setPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
-  setCurrentProvider: React.Dispatch<React.SetStateAction<string>>;
-  setClaudePermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
-  setCodexPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
-  setSelectedClaudeModel: React.Dispatch<React.SetStateAction<string>>;
-  setSelectedCodexModel: React.Dispatch<React.SetStateAction<string>>;
   setSelectedPiModel: React.Dispatch<React.SetStateAction<string>>;
-  setLongContextEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setReasoningEffort: React.Dispatch<React.SetStateAction<ReasoningEffort>>;
   setPiThinkingLevels: React.Dispatch<React.SetStateAction<ReasoningEffort[]>>;
-  setCodexFastMode: React.Dispatch<React.SetStateAction<CodexFastMode>>;
-  setProviderConfigVersion: React.Dispatch<React.SetStateAction<number>>;
   setActiveProviderConfig: React.Dispatch<React.SetStateAction<ProviderConfig | null>>;
-  setClaudeSettingsAlwaysThinkingEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setStreamingEnabledSetting: React.Dispatch<React.SetStateAction<boolean>>;
   setSendShortcut: React.Dispatch<React.SetStateAction<'enter' | 'cmdEnter'>>;
   setAutoOpenFileEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setPermissionDialogTimeoutSeconds: React.Dispatch<React.SetStateAction<number>>;
-  setSdkStatus: React.Dispatch<React.SetStateAction<Record<string, { installed?: boolean; status?: string }>>>;
-  setSdkStatusLoaded: React.Dispatch<React.SetStateAction<boolean>>;
-  setSdkStatusError: React.Dispatch<React.SetStateAction<string | null>>;
   setContextInfo: React.Dispatch<React.SetStateAction<ContextInfo | null>>;
   setSelectedAgent: React.Dispatch<React.SetStateAction<SelectedAgent | null>>;
   setSubagentHistories?: React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>;
@@ -94,9 +81,6 @@ export interface UseWindowCallbacksOptions {
   extractRawBlocks: (raw: ClaudeRawMessage | string | undefined) => Array<Record<string, unknown>>;
   getOrCreateStreamingAssistantIndex: (messages: ClaudeMessage[]) => number;
   patchAssistantForStreaming: (msg: ClaudeMessage) => ClaudeMessage;
-
-  // Other functions
-  syncActiveProviderModelMapping: (provider: ProviderConfig) => void;
 
   // Permission dialog handlers from useDialogManagement
   openPermissionDialog: (request: PermissionRequest) => void;

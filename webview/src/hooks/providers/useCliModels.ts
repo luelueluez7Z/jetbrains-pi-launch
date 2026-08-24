@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendBridgeEvent } from '../../utils/bridge';
 import type { ModelInfo } from '../../components/ChatInputBox/types';
-import { CODEX_MODELS, GROK_MODELS, KIMI_MODELS, OPENCODE_MODELS, PI_MODELS } from '../../components/ChatInputBox/types';
-import { isCliOnlyProvider } from './cliProviders';
-import { subscribeActiveCodexProvider } from '../../utils/runtimeProviderCapabilities';
 
 type CliModelsByProvider = Record<string, ModelInfo[]>;
 
@@ -26,23 +23,12 @@ export function __resetCliModelsCacheForTests() {
   for (const key of Object.keys(catalogHasEntriesCache)) delete catalogHasEntriesCache[key];
 }
 
-function fallbackModels(providerId: string): ModelInfo[] {
-  if (providerId === 'grok') return GROK_MODELS;
-  if (providerId === 'kimi') return KIMI_MODELS;
-  if (providerId === 'opencode') return OPENCODE_MODELS;
-  if (providerId === 'pi') return PI_MODELS;
-  if (providerId === 'codex') return CODEX_MODELS;
-  return [];
-}
-
 /**
- * Providers whose model list is discovered dynamically via `get_cli_models`.
- * Codex is included even though it is not a CLI-only provider: its list comes
- * from ~/.codex/config.toml + model_catalog_json, same as the codex CLI picker.
+ * 纯 pi：模型目录只来自后端 get_cli_models 推送；无静态 fallback 目录
+ * （cc-gui 的 claude/codex/grok/kimi/opencode 静态列表已移除）。
  */
-function supportsDynamicModels(providerId: string): boolean {
-  if (providerId === 'codex') return true;
-  return isCliOnlyProvider(providerId);
+function fallbackModels(): ModelInfo[] {
+  return [];
 }
 
 function normalizeModels(raw: unknown): ModelInfo[] {
@@ -69,8 +55,7 @@ function normalizeModels(raw: unknown): ModelInfo[] {
 }
 
 /**
- * Loads model catalogs for headless CLI providers (Kimi / OpenCode) and Codex
- * via channel-manager `listModels`. Falls back to static defaults until loaded.
+ * Loads the Pi model catalog via `get_cli_models` bridge.
  */
 export function useCliModels(currentProvider: string) {
   // Seed from module cache so history→chat remounts keep the last catalog.
@@ -130,7 +115,7 @@ export function useCliModels(currentProvider: string) {
       if (!payload?.provider) return;
       const provider = payload.provider;
       const models = normalizeModels(payload.models);
-      const resolvedModels = models.length > 0 ? models : fallbackModels(provider);
+      const resolvedModels = models.length > 0 ? models : fallbackModels();
       modelsCache[provider] = resolvedModels;
       catalogHasEntriesCache[provider] = models.length > 0;
       setModelsByProvider((prev) => ({
@@ -186,52 +171,20 @@ export function useCliModels(currentProvider: string) {
   }, [clearPendingLoad]);
 
   useEffect(() => {
-    if (!supportsDynamicModels(currentProvider)) return;
+    if (currentProvider !== 'pi') return;
     if (modelsByProvider[currentProvider]?.length) return;
 
     beginLoad(currentProvider);
   }, [currentProvider, modelsByProvider, beginLoad]);
 
-  // Switching the active Codex provider rewrites ~/.codex/config.toml, so the
-  // cached catalog no longer reflects what the CLI would serve. Drop the cache
-  // and refetch when the chat is currently on codex.
-  useEffect(() => {
-    return subscribeActiveCodexProvider(() => {
-      delete modelsCache.codex;
-      delete defaultModelCache.codex;
-      delete catalogHasEntriesCache.codex;
-      setModelsByProvider((prev) => {
-        if (!('codex' in prev)) return prev;
-        const next = { ...prev };
-        delete next.codex;
-        return next;
-      });
-      setDefaultModelByProvider((prev) => {
-        if (!('codex' in prev)) return prev;
-        const next = { ...prev };
-        delete next.codex;
-        return next;
-      });
-      setCatalogHasEntriesByProvider((prev) => {
-        if (!('codex' in prev)) return prev;
-        const next = { ...prev };
-        delete next.codex;
-        return next;
-      });
-      if (currentProvider === 'codex') {
-        beginLoad('codex');
-      }
-    });
-  }, [currentProvider, beginLoad]);
-
   const refreshCliModels = useCallback((providerId: string) => {
-    if (!supportsDynamicModels(providerId)) return;
+    if (providerId !== 'pi') return;
     beginLoad(providerId);
   }, [beginLoad]);
 
   const cliModels = modelsByProvider[currentProvider]?.length
     ? modelsByProvider[currentProvider]
-    : fallbackModels(currentProvider);
+    : fallbackModels();
 
   return {
     cliModels,

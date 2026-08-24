@@ -26,8 +26,6 @@ interface UseChatInputCompletionsCoordinatorOptions {
   closeAllCompletionsRef: MutableRefObject<() => void>;
   handleInputRef: MutableRefObject<() => void>;
   currentProvider: string;
-  onAgentSelect?: (agent: { id: string; name: string; prompt?: string } | null) => void;
-  onOpenAgentSettings?: () => void;
 }
 
 function replaceTextAndSync(
@@ -56,8 +54,6 @@ export function useChatInputCompletionsCoordinator({
   closeAllCompletionsRef,
   handleInputRef,
   currentProvider,
-  onAgentSelect,
-  onOpenAgentSettings,
 }: UseChatInputCompletionsCoordinatorOptions) {
   const renderFileTagsRef = useRef<() => void>(() => {});
 
@@ -116,16 +112,12 @@ export function useChatInputCompletionsCoordinator({
       if (
         agent.id === '__loading__' ||
         agent.id === '__empty__' ||
-        agent.id === '__empty_state__'
+        agent.id === '__empty_state__' ||
+        agent.id === '__create_new__'
       ) {
         return;
       }
-
-      if (agent.id === '__create_new__') {
-        onOpenAgentSettings?.();
-      } else {
-        onAgentSelect?.({ id: agent.id, name: agent.name, prompt: agent.prompt });
-      }
+      // pi 无 Claude 子代理列表（后端返回 []），选中后仅清除 `#` 触发文本
 
       if (!editableRef.current || !query) return;
       const newText = agentCompletion.replaceText(getTextContent(), '', query);

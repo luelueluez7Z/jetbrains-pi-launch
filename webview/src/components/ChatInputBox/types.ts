@@ -363,120 +363,8 @@ export const CLAUDE_MODELS: ModelInfo[] = [
   },
 ];
 
-/**
- * Codex model list
- */
-export const CODEX_MODELS: ModelInfo[] = [
-  {
-    id: 'gpt-5.6-sol',
-    label: 'GPT-5.6 Sol',
-    description: 'Frontier model for complex professional work.',
-  },
-  {
-    id: 'gpt-5.6-terra',
-    label: 'GPT-5.6 Terra',
-    description: 'GPT-5.6 model that balances intelligence and cost.',
-  },
-  {
-    id: 'gpt-5.6-luna',
-    label: 'GPT-5.6 Luna',
-    description: 'GPT-5.6 model optimized for cost-sensitive workloads.',
-  },
-  {
-    id: 'gpt-5.5',
-    label: 'GPT-5.5',
-    description: 'Latest frontier model with stronger capabilities.',
-  },
-  {
-    id: 'gpt-5.4',
-    label: 'GPT-5.4',
-    description: 'Latest frontier model with enhanced capabilities.',
-  },
-];
-
-/**
- * Default model id sent to the Grok ACP CLI via `session/set_model` /
- * `_meta.modelId`. The ACP CLI only accepts real upstream model ids —
- * sentinel values like `grok` / `default` / `(default)` are rejected with
- * "unknown model id", so the bridge (`normalizeGrokModelId`) and the Java
- * side (`normalizeCliModelForProvider`) normalize them to this value.
- *
- * Note: this id goes straight to the upstream API; it does NOT resolve
- * `~/.grok/config.toml` `[model."name"]` profiles the way the legacy
- * `-m <profile>` path did, so custom per-profile base_url/api_key from
- * config.toml may not apply here.
- */
-export const GROK_DEFAULT_MODEL_ID = 'grok-4.6';
-
-/**
- * Grok CLI model picker entries.
- * id = model ID passed via ACP session/set_model or _meta.modelId.
- */
-export const GROK_MODELS: ModelInfo[] = [
-  {
-    id: GROK_DEFAULT_MODEL_ID,
-    label: 'Grok 4.6',
-    description: 'xAI Grok 4.6',
-  },
-  {
-    id: 'grok-3',
-    label: 'Grok 3',
-    description: 'xAI Grok 3',
-  },
-  {
-    id: 'grok-2',
-    label: 'Grok 2',
-    description: 'xAI Grok 2',
-  },
-  {
-    id: 'grok-beta',
-    label: 'Grok Beta',
-    description: 'xAI Grok Beta',
-  },
-];
-
-/** Kimi CLI default: omit `--model` when empty / auto. */
-export const KIMI_DEFAULT_MODEL_ID = 'auto';
-
-export const KIMI_MODELS: ModelInfo[] = [
-  {
-    id: KIMI_DEFAULT_MODEL_ID,
-    label: 'Kimi Auto',
-    description: 'Use Kimi CLI default model',
-  },
-  {
-    id: 'kimi-k2.5',
-    label: 'Kimi K2.5',
-    description: 'Moonshot Kimi coding model',
-  },
-  {
-    id: 'kimi-k3',
-    label: 'Kimi K3',
-    description: 'Moonshot Kimi K3',
-  },
-];
-
-/** OpenCode default: omit `--model` so CLI resolves its own default. */
-export const OPENCODE_DEFAULT_MODEL_ID = 'opencode-default';
-
-export const OPENCODE_MODELS: ModelInfo[] = [
-  {
-    id: OPENCODE_DEFAULT_MODEL_ID,
-    label: 'OpenCode Default',
-    description: 'Use OpenCode CLI default model',
-  },
-];
-
 /** PI default: omit `--model` so CLI resolves its own default. */
 export const PI_DEFAULT_MODEL_ID = 'auto';
-
-export const PI_MODELS: ModelInfo[] = [
-  {
-    id: PI_DEFAULT_MODEL_ID,
-    label: 'PI Auto',
-    description: 'Use PI CLI default model',
-  },
-];
 
 /**
  * Available models (backward compatibility)
@@ -551,12 +439,6 @@ export function codexModelSupportsMaxEffort(modelId: string): boolean {
  * Codex API values: low, medium, high, xhigh; GPT-5.6 also supports max
  */
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-
-/**
- * Codex execution speed mode.
- * Standard uses Codex defaults; Fast maps to service_tier=fast at send time.
- */
-export type CodexFastMode = 'normal' | 'fast';
 
 /**
  * Reasoning level information
@@ -661,20 +543,8 @@ export interface ChatInputBoxProps {
   isLoading?: boolean;
   /** Current model */
   selectedModel?: string;
-  /** Current permission mode */
-  permissionMode?: PermissionMode;
-  /** Current provider */
+  /** Current provider（固定 pi） */
   currentProvider?: string;
-  /** Usage percentage */
-  usagePercentage?: number;
-  /** Used context tokens */
-  usageUsedTokens?: number;
-  /** Maximum context tokens */
-  usageMaxTokens?: number;
-  /** Whether to show usage */
-  showUsage?: boolean;
-  /** Whether always thinking is enabled */
-  alwaysThinkingEnabled?: boolean;
   /** Attachment list */
   attachments?: Attachment[];
   /** Placeholder text */
@@ -684,16 +554,6 @@ export interface ChatInputBoxProps {
   /** Controlled mode: input content */
   value?: string;
 
-  /** Current active file */
-  activeFile?: string;
-  /** Selected lines info (e.g., "L10-20") */
-  selectedLines?: string;
-
-  /** Clear context callback */
-  onClearContext?: () => void;
-  /** Remove code snippet callback */
-  onRemoveCodeSnippet?: (id: string) => void;
-
   // Event callbacks
   /** Submit message（behavior：流式中的发送语义，steer=打断引导 / followUp=排队后续） */
   onSubmit?: (content: string, attachments?: Attachment[], behavior?: SendBehavior) => void;
@@ -701,16 +561,10 @@ export interface ChatInputBoxProps {
   onStop?: () => void;
   /** Input change */
   onInput?: (content: string) => void;
-  /** Add attachment */
-  onAddAttachment?: (files: FileList) => void;
   /** Remove attachment */
   onRemoveAttachment?: (id: string) => void;
-  /** Switch mode */
-  onModeSelect?: (mode: PermissionMode) => void;
   /** Switch model */
   onModelSelect?: (modelId: string) => void;
-  /** Switch provider */
-  onProviderSelect?: (providerId: string) => void;
   /** Current reasoning effort */
   reasoningEffort?: ReasoningEffort;
   /** Compact Pi status line rendered above the composer. */
@@ -719,16 +573,6 @@ export interface ChatInputBoxProps {
   onReasoningChange?: (effort: ReasoningEffort) => void;
   /** Thinking levels reported by the active Pi model. */
   piThinkingLevels?: ReasoningEffort[];
-  /** Codex speed mode */
-  codexFastMode?: CodexFastMode;
-  /** Switch Codex speed mode callback */
-  onCodexFastModeChange?: (mode: CodexFastMode) => void;
-  /** Toggle thinking mode */
-  onToggleThinking?: (enabled: boolean) => void;
-  /** Whether streaming is enabled */
-  streamingEnabled?: boolean;
-  /** Toggle streaming */
-  onStreamingEnabledChange?: (enabled: boolean) => void;
 
   /** Send shortcut setting: 'enter' = Enter sends | 'cmdEnter' = Cmd/Ctrl+Enter sends */
   sendShortcut?: 'enter' | 'cmdEnter';
@@ -736,37 +580,6 @@ export interface ChatInputBoxProps {
   /** 流式发送键位模式：steerOnEnter = 回车引导/Tab 后续；followUpOnEnter = 回车后续/Tab 引导 */
   sendBehaviorMode?: SendBehaviorMode;
 
-  /** Currently selected agent */
-  selectedAgent?: SelectedAgent | null;
-  /** Select agent callback */
-  onAgentSelect?: (agent: SelectedAgent | null) => void;
-  /** Clear agent callback */
-  onClearAgent?: () => void;
-  /** Open agent settings callback */
-  onOpenAgentSettings?: () => void;
-  /** Open model settings (navigate to provider management to add models) */
-  onOpenModelSettings?: () => void;
-
-  /** Whether has messages (for rewind button display) */
-  hasMessages?: boolean;
-  /** Rewind file callback */
-  onRewind?: () => void;
-
-  /** Whether StatusPanel is expanded */
-  statusPanelExpanded?: boolean;
-  /** Toggle StatusPanel expand/collapse */
-  onToggleStatusPanel?: () => void;
-
-  /** SDK installed status (disable input when not installed) */
-  sdkInstalled?: boolean;
-  /** SDK status loading state */
-  sdkStatusLoading?: boolean;
-  /** SDK status query failed; chat remains available until the user retries */
-  sdkStatusError?: boolean;
-  /** Retry SDK status query callback */
-  onRetrySdkStatus?: () => void;
-  /** Go to install SDK callback */
-  onInstallSdk?: () => void;
   /** Show toast message */
   addToast?: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 
@@ -776,19 +589,10 @@ export interface ChatInputBoxProps {
   onRemoveFromQueue?: (id: string) => void;
   /** 撤回排队消息到输入框 */
   onRecallFromQueue?: (id: string) => void;
-
-  /** Whether auto open file is enabled */
-  autoOpenFileEnabled?: boolean;
-  /** Toggle auto open file enabled */
-  onAutoOpenFileEnabledChange?: (enabled: boolean) => void;
-  /** Whether long context (1M) is enabled */
-  longContextEnabled?: boolean;
-  /** Toggle long context callback */
-  onLongContextChange?: (enabled: boolean) => void;
 }
 
 /**
- * ButtonArea component props
+ * ButtonArea component props（纯 pi：无 provider/mode/agent/codex 切换）
  */
 export interface ButtonAreaProps {
   /** Whether submit disabled */
@@ -801,51 +605,21 @@ export interface ButtonAreaProps {
   isEnhancing?: boolean;
   /** Current model */
   selectedModel?: string;
-  /** Current mode */
-  permissionMode?: PermissionMode;
-  /** Current provider */
+  /** Current provider（固定 pi） */
   currentProvider?: string;
   /** Current reasoning effort */
   reasoningEffort?: ReasoningEffort;
-  /** Codex speed mode */
-  codexFastMode?: CodexFastMode;
+  /** Thinking levels reported by the active Pi model. */
+  piThinkingLevels?: ReasoningEffort[];
 
   // Event callbacks
   onSubmit?: () => void;
   onStop?: () => void;
-  onModeSelect?: (mode: PermissionMode) => void;
   onModelSelect?: (modelId: string) => void;
-  onProviderSelect?: (providerId: string) => void;
   /** Switch reasoning effort callback */
   onReasoningChange?: (effort: ReasoningEffort) => void;
-  /** Thinking levels reported by the active Pi model. */
-  piThinkingLevels?: ReasoningEffort[];
-  /** Switch Codex speed mode callback */
-  onCodexFastModeChange?: (mode: CodexFastMode) => void;
   /** Enhance prompt callback */
   onEnhancePrompt?: () => void;
-  /** Whether always thinking enabled */
-  alwaysThinkingEnabled?: boolean;
-  /** Toggle thinking mode */
-  onToggleThinking?: (enabled: boolean) => void;
-  /** Whether streaming enabled */
-  streamingEnabled?: boolean;
-  /** Toggle streaming */
-  onStreamingEnabledChange?: (enabled: boolean) => void;
-  /** Currently selected agent */
-  selectedAgent?: SelectedAgent | null;
-  /** Agent selection callback */
-  onAgentSelect?: (agent: SelectedAgent) => void;
-  /** Clear agent callback */
-  onClearAgent?: () => void;
-  /** Open agent settings callback */
-  onOpenAgentSettings?: () => void;
-  /** Navigate to model management to add models */
-  onAddModel?: () => void;
-  /** Whether long context (1M) is enabled */
-  longContextEnabled?: boolean;
-  /** Toggle long context callback */
-  onLongContextChange?: (enabled: boolean) => void;
 }
 
 /**

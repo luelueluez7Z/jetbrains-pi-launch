@@ -16,8 +16,6 @@ export interface UseKeyboardHandlerOptions {
   isComposingRef: MutableRefObject<boolean>;
   lastCompositionEndTimeRef: MutableRefObject<number>;
   sendShortcut: 'enter' | 'cmdEnter';
-  sdkStatusLoading: boolean;
-  sdkInstalled: boolean;
   fileCompletion: CompletionWithKeyDown;
   commandCompletion: CompletionWithKeyDown;
   agentCompletion: CompletionWithKeyDown;
@@ -54,8 +52,6 @@ export function useKeyboardHandler({
   isComposingRef,
   lastCompositionEndTimeRef,
   sendShortcut,
-  sdkStatusLoading,
-  sdkInstalled,
   fileCompletion,
   commandCompletion,
   agentCompletion,
@@ -139,7 +135,6 @@ export function useKeyboardHandler({
       if (e.key === 'Tab' && !isIMEComposing) {
         e.preventDefault();
         e.stopPropagation();
-        if (sdkStatusLoading || !sdkInstalled) return;
         submittedOnEnterRef.current = true;
         handleSubmit(behaviorForTab(sendBehaviorMode));
         return;
@@ -156,7 +151,6 @@ export function useKeyboardHandler({
       if (!isSendKey) return;
 
       e.preventDefault();
-      if (sdkStatusLoading || !sdkInstalled) return;
 
       submittedOnEnterRef.current = true;
       handleSubmit(behaviorForEnter(sendBehaviorMode));
@@ -172,8 +166,6 @@ export function useKeyboardHandler({
       inlineCompletion,
       lastCompositionEndTimeRef,
       sendShortcut,
-      sdkStatusLoading,
-      sdkInstalled,
       submittedOnEnterRef,
       completionSelectedRef,
       sendBehaviorMode,

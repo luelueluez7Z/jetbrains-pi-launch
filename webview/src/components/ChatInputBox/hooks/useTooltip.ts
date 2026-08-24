@@ -22,9 +22,8 @@ interface UseTooltipReturn {
 }
 
 // 触发 tooltip 的目标：带 has-tooltip + data-tooltip 的元素（压缩按钮、发送/停止、
-// ChatHeader 按钮、context-tool-btn、enhance-prompt-button 等）统一走 JS 浮层。
-// .context-item 排除：它用 CSS ::after 实现 tooltip（context-bar.css），避免双提示。
-const TOOLTIP_TARGET_SELECTOR = '.has-tooltip[data-tooltip]:not(.context-item)';
+// ChatHeader 按钮、enhance-prompt-button 等）统一走 JS 浮层。
+const TOOLTIP_TARGET_SELECTOR = '.has-tooltip[data-tooltip]';
 
 // 悬停延迟显示时间（ms）：避免鼠标扫过时闪烁，几秒内停留才显示
 const TOOLTIP_DELAY_MS = 500;
