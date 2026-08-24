@@ -17,3 +17,9 @@
 @import './styles/dialogs.css';
 @import './styles/enhance-prompt.css';
 @import './styles/banners.css';
+
+/* 输入框上方区域（附件/队列）与输入框容器同宽，圆角与卡片一致 */
+.chat-input-box > .resize-handle + * {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
