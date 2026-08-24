@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ButtonAreaProps, ReasoningEffort } from './types';
-import { ContextPresetSelect, ModelSelect, PlanModeSelect, ReasoningSelect } from './selectors';
+import { ModelSelect, PlanModeSelect, ReasoningSelect } from './selectors';
 import { useCliModels } from '../../hooks/providers/useCliModels';
 import { useToolbarSelectorCompact } from './hooks/useToolbarSelectorCompact';
 import { resolveProviderModels } from './resolveProviderModels';
@@ -140,7 +140,6 @@ export const ButtonArea = ({
         />
         <ReasoningSelect value={reasoningEffort} onChange={handleReasoningChange} selectedModel={selectedModel} currentProvider={currentProvider} piThinkingLevels={piThinkingLevels} />
         {isPi && <PlanModeSelect />}
-        {isPi && <ContextPresetSelect />}
         {isPi && (
           <button
             className="has-tooltip"

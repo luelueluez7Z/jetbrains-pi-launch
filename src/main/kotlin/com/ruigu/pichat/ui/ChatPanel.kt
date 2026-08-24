@@ -426,8 +426,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             "update_title" -> updateSessionTitle(content)
             "open_file" -> handleOpenFile(content)
             "show_diff" -> handleShowDiff(content)
-            "get_context_presets" -> publishContextPresets()
-            "set_context_preset" -> handleSetContextPreset(content)
             "set_plan_mode" -> handleSetPlanMode(content)
             "compact_session" -> handleCompactSession()
             "enhance_prompt" -> handleEnhancePrompt(content)
@@ -1052,7 +1050,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         loadSessionList(sessionFile)
         loadSessionStats()
         publishCommands()
-        publishContextPresets()
         publishWebState()
     }
 
@@ -1198,9 +1195,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private val planTail: String
         get() = if (planModeText.isNotBlank()) " · $planModeText" else ""
 
-    /** ctx-preset 扩展推送的各模型原始 contextWindow（未被挡位覆盖），用于挡位过滤上限。 */
-    private val originalCtxMax = mutableMapOf<String, Long>()
-
     private fun formatPiStatus(data: JsonObject): String {
         val tokens = data.getAsJsonObject("tokens")
         val context = data.getAsJsonObject("contextUsage")
@@ -1243,7 +1237,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     currentModel.value = item
                     if (!sameModel) addSystem("已切换模型: ${item.name}")
                     loadThinkingLevels("")
-                    publishContextPresets()
                 } else {
                     addSystem("切换模型失败: " + (res?.error() ?: "无响应"))
                 }
@@ -1789,53 +1782,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         }
     }
 
-    // ================= 上下文挡位（ctx-preset 扩展） =================
-
-    private fun ctxPresetFile(): Path =
-        Path.of(System.getProperty("user.home"), ".pi", "agent", "ctx-preset.json")
-
-    /** 推送当前模型的上下文挡位信息给前端选择器。 */
-    private fun publishContextPresets() {
-        if (!webUiReady) return
-        val model = currentModel.value
-        var persistedK = -1
-        try {
-            val file = ctxPresetFile()
-            if (Files.exists(file)) {
-                val cfg = JsonParser.parseString(Files.readString(file)).asJsonObject
-                val presets = if (cfg.has("presets") && cfg.get("presets").isJsonObject) cfg.getAsJsonObject("presets") else null
-                model?.let { m ->
-                    presets?.get("${m.provider}/${m.id}")?.takeIf { it.isJsonPrimitive }?.let { persistedK = (it.asLong / 1000).toInt() }
-                }
-            }
-        } catch (e: Exception) {
-            // 配置不可读则忽略
-        }
-        // 挡位过滤上限：优先用 ctx-preset 扩展推送的模型原始 contextWindow（未被挡位覆盖，
-        // 避免已持久化挡位导致 get_available_models 返回覆盖值而低估上限），回退当前值。
-        val originalMaxK = model?.let { m -> originalCtxMax["${m.provider}/${m.id}"]?.div(1000) } ?: 0
-        val modelMaxK = if (originalMaxK > 0) originalMaxK else (model?.contextWindow ?: 0L) / 1000
-        val levels = readCtxPresetLevels()
-        // 挡位跟随模型上限：只保留不超过模型原始 contextWindow 的挡位（与 TUI /ctx 选择器一致）。
-        // 模型原始上限未知（contextWindow<=0）时不过滤，展示全部挡位。
-        val effectiveLevels = if (modelMaxK > 0) levels.filter { it <= modelMaxK } else levels
-        // 无可用挡位（如模型仅 180k < 最小挡 256k）→ currentK=0 + presets 空，前端隐藏选择器（没必要调整）。
-        // currentK 优先显示当前实际生效值（pi 报告，可能已被挡位覆盖），回退持久化挡位/原始上限。
-        val currentModelK = (model?.contextWindow ?: 0L) / 1000
-        val currentK = if (effectiveLevels.isEmpty()) 0
-            else if (currentModelK > 0) currentModelK
-            else if (persistedK > 0) persistedK
-            else modelMaxK
-        onEdt {
-            callWeb("updateContextPresets", gson.toJson(JsonObject().apply {
-                addProperty("currentK", currentK)
-                addProperty("persistedK", persistedK)
-                add("presets", JsonArray().also { arr -> effectiveLevels.forEach { arr.add(it) } })
-                model?.let { addProperty("modelKey", "${it.provider}/${it.id}") }
-            }))
-        }
-    }
-
     /** 手动压缩会话上下文：发送 pi 内置 /compact 命令（等价 TUI 的 /compact）。 */
     private fun handleCompactSession() {
         if (!client.isRunning()) {
@@ -1844,59 +1790,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         }
         client.prompt("/compact")
         callWeb("addToast", "正在压缩上下文…", "info")
-    }
-
-    /** 从 ctx-preset 扩展源码读取挡位表（PRESETS 的键，单位 K），动态跟随用户配置（如新增 512）。
-     *  路径 ~/.pi/agent/extensions/ctx-preset/index.ts，匹配 `"200": 200_000` 形式的纯数字键。 */
-    private fun readCtxPresetLevels(): List<Int> {
-        val fallback = listOf(200, 400, 1000)
-        return try {
-            val home = System.getProperty("user.home")
-            val file = Path.of(home, ".pi", "agent", "extensions", "ctx-preset", "index.ts")
-            if (!Files.exists(file)) return fallback
-            val src = Files.readString(file)
-            val pattern = Regex("\"(\\d+)\"\\s*:\\s*[\\d_]+")
-            val levels: List<Int> = pattern.findAll(src)
-                .map { it.groupValues[1].toIntOrNull() }
-                .filterNotNull()
-                .distinct()
-                .sorted()
-                .toList()
-            if (levels.isEmpty()) fallback else levels
-        } catch (e: Exception) {
-            fallback
-        }
-    }
-
-    /** 设置挡位：与 TUI `/ctx <level> --p` 一致——运行时应用 + 持久化，无需重启进程。
-     *  ctx-preset 扩展通过 pi.registerProvider() 重新注册当前模型（覆盖 contextWindow）
-     *  立即生效，并把挡位写入 ~/.pi/agent/ctx-preset.json（下次 session_start 自动应用）。 */
-    private fun handleSetContextPreset(content: String) {
-        val level = content.trim().toIntOrNull()
-        val levels = readCtxPresetLevels()
-        if (level == null || level !in levels) {
-            callWeb("addToast", "可用挡位: " + levels.joinToString(" / "), "error")
-            return
-        }
-        val model = currentModel.value ?: run {
-            callWeb("addToast", "当前没有活动模型", "warning")
-            return
-        }
-        if (!client.isRunning()) {
-            callWeb("addToast", "pi 未连接，无法设置挡位", "error")
-            return
-        }
-        // 发送扩展命令 /ctx 400 --p：扩展立即 applyContextWindow（内存重注册）并持久化
-        client.prompt("/ctx $level --p")
-        callWeb("addToast", "已设置 ${model.provider}/${model.id} = ${level}k", "success")
-        // 扩展异步应用 + 写配置，稍后刷新前端挡位显示与状态栏
-        javax.swing.Timer(1500) {
-            publishContextPresets()
-            loadSessionStats()
-        }.apply {
-            isRepeats = false
-            start()
-        }
     }
 
     private fun textOf(content: JsonElement?): String {
@@ -2251,19 +2144,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                         addProperty("done", true)
                     }))
                 }
-            }
-            "ctx-original-max" -> {
-                // ctx-preset 扩展推送的模型原始 contextWindow（未被挡位覆盖），
-                // 用于挡位过滤上限（不追加状态栏，直接返回）。
-                try {
-                    val obj = JsonParser.parseString(text).asJsonObject
-                    val key = obj.get("key").asString
-                    val max = obj.get("max").asLong
-                    if (key.isNotBlank() && max > 0) originalCtxMax[key] = max
-                } catch (e: Exception) {
-                    // 解析失败忽略
-                }
-                return
             }
             else -> return
         }

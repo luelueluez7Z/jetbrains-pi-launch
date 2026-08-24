@@ -534,11 +534,6 @@ interface Window {
   updateSlashCommands?: (json: string) => void;
 
   /**
-   * Update context preset (ctx-preset 扩展挡位) data from backend
-   */
-  updateContextPresets?: (json: string) => void;
-
-  /**
    * Update plan mode state (pi-plan-mode 扩展) from backend
    */
   updatePlanMode?: (json: string) => void;

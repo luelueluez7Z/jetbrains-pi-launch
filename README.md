@@ -12,7 +12,7 @@
 - **Shared sessions** — reads/writes the same session files as the terminal pi (`~/.pi/agent/sessions/`). Opening the panel in a project auto-resumes the most recent session for that directory. Renaming or deleting a session in the plugin is reflected in the terminal pi and vice versa.
 - **Single-process session model** — only one pi process is alive at a time (matching the terminal). Switching history sessions or starting a new one restarts the process.
 - **Streaming chat UI** — streaming text and thinking deltas, tool-call cards, and command output rendered inline in the message stream.
-- **Model & reasoning controls** — model picker, thinking-level selector, and a **context-window preset selector** (200K / 400K / 1M) driven by the pi `ctx-preset` extension.
+- **Model & reasoning controls** — model picker and thinking-level selector.
 - **Input-box completion** — slash-command completion (from pi's `get_commands`), `@file` reference completion (project tree scan), input history (↑/↓) and ghost completion.
 - **Status bar** — current model, context usage with a progress ring, cache hit rate, token counters, and a busy/idle indicator.
 - **History management** — session list with load / rename / delete, and inline ask-user dialogs for pi's `select` / `confirm` / `input` extension requests.
