@@ -244,6 +244,9 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
     visibleLimit: MAX_VISIBLE_MODEL_OPTIONS,
   });
   const visibleModelCount = sections.reduce((n, s) => n + s.models.length, 0);
+  // 搜索后回车选中的目标：sections 已按搜索词过滤且 pinned 分组在前，
+  // 故第一个非空 section 的首个模型即“第一个匹配结果”（无匹配时为 undefined）。
+  const firstVisibleModelId = sections.find((s) => s.models.length > 0)?.models[0]?.id;
   const showSearch = shouldShowModelSearch(models.length, searchQuery);
   const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
 
@@ -359,7 +362,16 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
                 placeholder={t('models.searchPlaceholder', { defaultValue: 'Search models' })}
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  // 搜索后按回车：选中第一个匹配结果（仅在有搜索词且存在匹配时）
+                  if (e.key === 'Enter' && searchQuery.trim() && firstVisibleModelId) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSelect(firstVisibleModelId);
+                  } else {
+                    e.stopPropagation();
+                  }
+                }}
               />
             </div>
           )}
