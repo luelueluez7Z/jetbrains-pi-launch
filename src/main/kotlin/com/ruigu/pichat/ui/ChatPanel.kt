@@ -1206,9 +1206,13 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         val percent = context?.numberValue("percent") ?: 0.0
         val cacheBase = input + cacheRead
         val cachePercent = if (cacheBase > 0) cacheRead * 100.0 / cacheBase else 0.0
+        // 累计费用（pi getSessionStats 的 cost 字段，跨全部会话条目含压缩历史；与 TUI footer 的 $x.xxx 显示一致）
+        val cost = if (data.has("cost") && data.get("cost").isJsonPrimitive) data.get("cost").asDouble else 0.0
         val phase = if (busy.value) "正在回复…" else "空闲"
         val contextPart = if (max > 0) "${formatTokenCount(used)}/${formatTokenCount(max)} (${formatPercent(percent)})" else "${formatTokenCount(used)}"
-        val tail = " · $contextPart · cache ${formatPercent(cachePercent)} · ↑${formatTokenCount(output)} ↓${formatTokenCount(input)}"
+        // cost > 0 才显示（如 $0.123），与 TUI 对齐
+        val costPart = if (cost > 0) " · \$" + String.format(java.util.Locale.ROOT, "%.3f", cost) else ""
+        val tail = " · $contextPart · cache ${formatPercent(cachePercent)} · ↑${formatTokenCount(output)} ↓${formatTokenCount(input)}$costPart"
         statsTail = tail
         return "● $phase$tail$planTail$balanceTail"
     }

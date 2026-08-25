@@ -4,6 +4,7 @@ import { AVAILABLE_MODELS, normalizeClaudeModelId, modelSupports1MContext, strip
 import type { ModelInfo } from '../types';
 import { ProviderModelIcon } from '../../shared/ProviderModelIcon';
 import { useDropdownPosition } from '../../../hooks/useDropdownPosition';
+import { fuzzyFilter } from '../../../utils/fuzzy';
 import Switch from 'antd/es/switch';
 import {
   buildModelDropdownSections,
@@ -232,11 +233,14 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
   };
 
   const normalizedSearchQuery = deferredSearchQuery.trim().toLowerCase();
+  // 用 pi 同款模糊过滤（fuzzyFilter）：支持空格/斜杠分隔多 token、字符跳跃匹配，
+  // 并按相关度排序（最佳匹配在前）。解决子串 includes 搜不到带空格/缺字符查询的问题。
   const filteredModels = normalizedSearchQuery
-    ? models.filter((model) => {
+    ? fuzzyFilter(models, deferredSearchQuery, (model) => {
         const label = getModelLabel(model, false);
         const description = getModelDescription(model) ?? '';
-        return [model.id, label, description].some((text) => text.toLowerCase().includes(normalizedSearchQuery));
+        // 匹配文本覆盖 provider / id / label / description，供空格 token 分别匹配
+        return `${model.provider ?? ''} ${model.id} ${label} ${description}`;
       })
     : models;
 
