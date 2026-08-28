@@ -3,8 +3,6 @@ import type { TFunction } from 'i18next';
 import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../../types';
 
 import MarkdownBlock from '../MarkdownBlock';
-import { ErrorDiagnosticCard } from './ErrorDiagnosticCard';
-import { matchErrorPattern } from '../../utils/errorMatcher';
 import {
   EditToolBlock,
   ReadToolBlock,
@@ -34,7 +32,6 @@ export interface MessageItemProps {
   extractMarkdownContent: (message: ClaudeMessage) => string;
   onNodeRef?: (id: string, node: HTMLDivElement | null) => void;
   onNavigateToProviderSettings?: () => void;
-  onNavigateToDependencySettings?: () => void;
   toolResultSignature?: string;
   /** Current active provider id (e.g. 'claude', 'codex'); drives the streaming-connect label. */
   currentProvider?: string;
@@ -394,7 +391,6 @@ export const MessageItem = memo(function MessageItem({
   findToolResult,
   extractMarkdownContent,
   onNodeRef,
-  onNavigateToDependencySettings,
   toolResultSignature: _toolResultSignature,
   currentProvider,
   detailedOutputEnabled = false,
@@ -568,27 +564,9 @@ export const MessageItem = memo(function MessageItem({
     }
   }, [message.type, messageKey, onNodeRef]);
 
-  const errorDiagnosticPattern = useMemo(
-    () => (message.type === 'error'
-      ? matchErrorPattern(getMessageText(message))
-      : null),
-    [message, getMessageText]
-  );
-
   const renderGroupedBlocks = () => {
     if (message.type === 'error') {
-      return (
-        <>
-          <MarkdownBlock content={getMessageText(message)} />
-          {errorDiagnosticPattern && (
-            <ErrorDiagnosticCard
-              t={t}
-              pattern={errorDiagnosticPattern}
-              onNavigateToDependencySettings={onNavigateToDependencySettings}
-            />
-          )}
-        </>
-      );
+      return <MarkdownBlock content={getMessageText(message)} />;
     }
 
     if (isEmptyStreamingPlaceholder) {

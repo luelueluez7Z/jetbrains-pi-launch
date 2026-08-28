@@ -894,6 +894,11 @@ interface Window {
   // ============================================================================
 
   /**
+   * Update dependency status callback
+   */
+  updateDependencyStatus?: (json: string) => void;
+
+  /**
    * CLI tools install/version detection result (Settings → CLI tab).
    * Payload is a map of tool id → { id, name, binaryName, installed, version?, path?, error? }.
    */
@@ -903,11 +908,6 @@ interface Window {
    * Dependency install progress callback
    */
   dependencyInstallProgress?: (json: string) => void;
-
-  /**
-   * Update dependency status callback
-   */
-  updateDependencyStatus?: (json: string) => void;
 
   /**
    * Dependency install result callback

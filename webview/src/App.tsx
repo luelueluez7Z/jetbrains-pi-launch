@@ -209,7 +209,7 @@ const App = () => {
     handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions,
-    updateHistoryTitle, applyHistoryTitleLocal, convertToCliSession,
+    updateHistoryTitle, applyHistoryTitleLocal,
   } = useSessionManagement({
     messages, loading, historyData, currentSessionId, currentSessionIdRef, currentProvider,
     setHistoryData, setMessages, setCurrentView, setCurrentSessionId,
@@ -460,13 +460,11 @@ const App = () => {
               <HistoryView
                 historyData={historyData}
                 currentProvider={currentProvider}
-                currentSessionId={currentSessionId}
                 onLoadSession={loadHistorySession}
                 onDeleteSession={deleteHistorySession}
                 onDeleteSessions={deleteHistorySessions}
-                onUpdateTitle={updateHistoryTitle}
-                onConvertToCliSession={convertToCliSession}
-              />
+          onUpdateTitle={updateHistoryTitle}
+        />
             </ErrorBoundary>
           )}
         </>

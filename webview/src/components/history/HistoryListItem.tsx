@@ -83,10 +83,6 @@ export const stopPropagationHandler = (e: React.MouseEvent) => {
   e.stopPropagation();
 };
 
-// Entrypoints the backend conversion service actually knows how to rewrite
-// (SessionConversionService only matches sdk-cli / claude-vscode patterns).
-const CONVERTIBLE_ENTRYPOINTS = new Set(['sdk-cli', 'claude-vscode']);
-
 export interface HistoryListItemProps {
   session: HistorySessionSummary;
   isEditing: boolean;
@@ -94,7 +90,6 @@ export interface HistoryListItemProps {
   isSelectionMode: boolean;
   isCopied: boolean;
   isCopyFailed: boolean;
-  isActiveSession: boolean;
   editingTitle: string;
   searchQuery: string;
   t: TFunction;
@@ -106,7 +101,6 @@ export interface HistoryListItemProps {
   onEditTitleChange: (value: string) => void;
   onDelete: (sessionId: string) => void;
   onCopySessionId: (sessionId: string) => void;
-  onConvertToCliSession: (sessionId: string) => void;
 }
 
 export const HistoryListItem = memo(({
@@ -116,7 +110,6 @@ export const HistoryListItem = memo(({
   isSelectionMode,
   isCopied,
   isCopyFailed,
-  isActiveSession,
   editingTitle,
   searchQuery,
   t,
@@ -128,7 +121,6 @@ export const HistoryListItem = memo(({
   onEditTitleChange,
   onDelete,
   onCopySessionId,
-  onConvertToCliSession,
 }: HistoryListItemProps) => {
   const handleRowClick = useCallback(() => {
     onItemClick(session, isEditing);
@@ -175,18 +167,7 @@ export const HistoryListItem = memo(({
     onCopySessionId(session.id || session.sessionId);
   }, [onCopySessionId, session.id, session.sessionId]);
 
-  const handleConvertToCliSession = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onConvertToCliSession(session.sessionId);
-  }, [onConvertToCliSession, session.sessionId]);
-
   const fileSize = session.fileSize ? formatFileSize(session.fileSize) : null;
-  const showEntrypointBadge = session.entrypoint && session.entrypoint !== 'cli' && session.entrypoint !== 'remote';
-  // Converting the session this window is still chatting in would race with the
-  // SDK process appending to the jsonl file, so hide the button for it.
-  const showConvertButton = !isActiveSession
-    && session.entrypoint != null
-    && CONVERTIBLE_ENTRYPOINTS.has(session.entrypoint);
 
   return (
     <div
@@ -284,22 +265,6 @@ export const HistoryListItem = memo(({
             <span className={fileSize.isMB ? 'history-filesize-large' : ''}>{fileSize.text}</span>
           </>
         )}
-        {showEntrypointBadge && (
-          <>
-            <span className="history-meta-dot">•</span>
-            <span
-              className={`history-entrypoint-badge history-entrypoint-${session.entrypoint}`}
-              title={t(`history.entrypointTooltip.${session.entrypoint}`, { defaultValue: session.entrypoint })}
-            >
-              <span className={`codicon ${
-                session.entrypoint === 'sdk-cli' ? 'codicon-symbol-namespace' :
-                session.entrypoint === 'claude-vscode' ? 'codicon-extensions' :
-                'codicon-debug-alt'
-              }`}></span>
-              {t(`history.entrypointLabel.${session.entrypoint}`, { defaultValue: session.entrypoint })}
-            </span>
-          </>
-        )}
         <span className="history-meta-dot">•</span>
         <div className="history-session-id-container">
           <span
@@ -317,17 +282,6 @@ export const HistoryListItem = memo(({
             <span className={`codicon ${isCopied ? 'codicon-check' : isCopyFailed ? 'codicon-error' : 'codicon-copy'}`}></span>
           </button>
         </div>
-        {showConvertButton && (
-          <button
-            className={`history-convert-btn history-convert-${session.entrypoint}`}
-            onClick={handleConvertToCliSession}
-            title={t('history.convertToCliSession')}
-            aria-label={t('history.convertToCliSession')}
-          >
-            <span className="codicon codicon-arrow-swap"></span>
-            {t('history.convertButton')}
-          </button>
-        )}
       </div>
     </div>
   );

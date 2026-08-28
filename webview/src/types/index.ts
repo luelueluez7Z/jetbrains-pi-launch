@@ -130,7 +130,6 @@ export interface HistorySessionSummary {
   /** Agent name when known (OpenCode / Claude). */
   agent?: string;
   fileSize?: number;
-  entrypoint?: string; // Session entrypoint: 'cli', 'sdk-cli', 'claude-vscode', etc.
 }
 
 export interface HistoryData {

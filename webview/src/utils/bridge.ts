@@ -333,30 +333,3 @@ export const showInteractiveDiff = (
   }
   sendToJava('show_interactive_diff', { filePath, newFileContents, tabName, isNewFile: isNewFile ?? false });
 };
-
-/**
- * Rewind files to a specific user message state
- * @param sessionId - Session ID
- * @param userMessageId - User message UUID to rewind to
- */
-export const rewindFiles = (sessionId: string, userMessageId: string) => {
-  sendToJava('rewind_files', { sessionId, userMessageId });
-};
-
-/**
- * Undo changes for a single file
- * @param filePath - Absolute path to the file
- * @param status - File status: 'A' (added) or 'M' (modified)
- * @param operations - Array of edit operations to reverse
- */
-export const undoFileChanges = (
-  filePath: string,
-  status: 'A' | 'M',
-  operations: Array<{ oldString: string; newString: string; replaceAll?: boolean }>
-) => {
-  // Security: Validate file path (defense-in-depth, backend also validates)
-  if (!isValidMutatingPath(filePath)) {
-    return;
-  }
-  sendToJava('undo_file_changes', { filePath, status, operations });
-};

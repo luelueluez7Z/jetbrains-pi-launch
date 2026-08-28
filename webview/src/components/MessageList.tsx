@@ -98,7 +98,6 @@ interface MessageListProps {
   /** Notify parent when the number of collapsed (hidden) messages changes. */
   onCollapsedCountChange?: (count: number) => void;
   onNavigateToProviderSettings?: () => void;
-  onNavigateToDependencySettings?: () => void;
   /** Current active provider id; forwarded to MessageItem for streaming-connect label. */
   currentProvider?: string;
   currentSessionId?: string | null;
@@ -118,7 +117,6 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   onMessageNodeRef,
   onCollapsedCountChange,
   onNavigateToProviderSettings,
-  onNavigateToDependencySettings,
   currentProvider,
   currentSessionId,
 }, ref) {
@@ -335,8 +333,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
             extractMarkdownContent={extractMarkdownContent}
             onNodeRef={onMessageNodeRef}
             onNavigateToProviderSettings={onNavigateToProviderSettings}
-            onNavigateToDependencySettings={onNavigateToDependencySettings}
-            toolResultSignature={toolResultSignature}
+                toolResultSignature={toolResultSignature}
             currentProvider={currentProvider}
             detailedOutputEnabled={detailedOutputEnabled}
           />

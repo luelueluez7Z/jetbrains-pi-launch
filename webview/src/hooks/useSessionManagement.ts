@@ -61,7 +61,6 @@ interface UseSessionManagementReturn {
   deleteHistorySessions: (sessionIds: string[]) => void;
   updateHistoryTitle: (sessionId: string, newTitle: string) => void;
   applyHistoryTitleLocal: (sessionId: string, newTitle: string) => void;
-  convertToCliSession: (sessionId: string) => void;
 }
 
 /**
@@ -430,28 +429,6 @@ export function useSessionManagement({
     }
   }, [historyData, setHistoryData]);
 
-  // Convert SDK-created session to CLI-recognizable session.
-  // The backend sends an onConversionResult callback with success/failure;
-  // the registered handler in sessionCallbacks shows the appropriate toast
-  // and triggers a deep-search reload on failure to restore the correct state.
-  // We optimistically change the entrypoint from 'sdk-cli' to 'cli' so the badge disappears
-  // immediately.  Functional update avoids depending on historyData directly,
-  // keeping the callback reference stable across renders.
-  const convertToCliSession = useCallback((sessionId: string) => {
-    sendBridgeEvent('convert_to_cli_session', sessionId);
-
-    // Optimistically change entrypoint while the backend works.
-    setHistoryData(prev => {
-      if (!prev?.sessions) return prev;
-      return {
-        ...prev,
-        sessions: prev.sessions.map(s =>
-          s.sessionId === sessionId ? { ...s, entrypoint: 'cli' } : s
-        ),
-      };
-    });
-  }, [setHistoryData]);
-
   return {
     showNewSessionConfirm,
     showInterruptConfirm,
@@ -468,6 +445,5 @@ export function useSessionManagement({
     deleteHistorySessions,
     updateHistoryTitle,
     applyHistoryTitleLocal,
-    convertToCliSession,
   };
 }

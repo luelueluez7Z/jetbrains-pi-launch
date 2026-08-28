@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { TFunction } from 'i18next';
-import { createLocalizeMessage } from '../utils/localizationUtils';
 import {
   normalizeBlocks as normalizeBlocksUtil,
   getMessageText as getMessageTextUtil,
@@ -28,7 +27,9 @@ export interface UseMessageProcessingOptions {
  * and computes mergedMessages.
  */
 export function useMessageProcessing({ messages, currentSessionId, t }: UseMessageProcessingOptions) {
-  const localizeMessage = useMemo(() => createLocalizeMessage(t), [t]);
+  // 后端（pi RPC + 会话 jsonl）推送的文本已是最终文案，无需再做英文→i18n 映射；
+  // 此处保留恒等函数占位，避免大规模改动 normalizeBlocks/getMessageText 的签名。
+  const localizeMessage = useMemo(() => (text: string) => text, []);
 
   // Cache for normalizeBlocks to avoid re-parsing unchanged messages
   const normalizeBlocksCache = useRef(new WeakMap<object, ClaudeContentBlock[]>());

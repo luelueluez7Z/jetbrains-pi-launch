@@ -1,9 +1,8 @@
 /**
  * sessionCallbacks.ts
  *
- * Registers window bridge callbacks for session management, SDK dependency status,
- * and rewind result: setSessionId, addToast, onExportSessionData,
- * updateDependencyStatus, onRewindResult.
+ * Registers window bridge callbacks for session management and SDK dependency
+ * status: setSessionId, addToast, onExportSessionData, updateDependencyStatus.
  */
 
 import type { MutableRefObject } from 'react';
@@ -11,7 +10,6 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { downloadJSON } from '../../../utils/exportMarkdown';
 import { releaseSessionTransition } from '../sessionTransition';
 import { drainPendingDependencyStatus } from '../settingsBootstrap';
-import { sendBridgeEvent } from '../../../utils/bridge';
 import {
   isDependencyStatusResponse,
   settleDependencyStatusRequest,
@@ -101,56 +99,5 @@ export function registerSessionAndSdkCallbacks(
     if (currentSessionIdRef.current !== sessionId) return;
     setCustomSessionTitle(title.trim());
     applyHistoryTitleLocal(sessionId, title.trim());
-  };
-
-  // =========================================================================
-  // SDK-to-CLI Session Conversion Result Callback
-  // =========================================================================
-
-  window.onConversionResult = (json: string) => {
-    // The optimistic update already flipped the entrypoint to 'cli'; reloading
-    // restores the real on-disk state (confirming success or rolling back failure).
-    const reloadHistory = () => {
-      const provider = options.currentProviderRef.current;
-      if (provider) {
-        sendBridgeEvent('deep_search_history', provider);
-      } else {
-        console.warn('[Frontend] Provider unavailable for conversion state reload');
-      }
-    };
-
-    try {
-      const result = JSON.parse(json);
-      if (result.success) {
-        if (result.infoCode === 'ALREADY_CLI_SESSION') {
-          // Already a CLI session - the optimistic update was correct, no reload needed
-          addToast(tRef.current('history.conversionErrors.ALREADY_CLI_SESSION'), 'info');
-        } else {
-          // Actually converted - show success and reload to get updated index
-          addToast(tRef.current('history.convertSuccess'), 'success');
-          reloadHistory();
-        }
-        return;
-      }
-
-      // Failure path: translate error code and show error message
-      const errorCode = result.errorCode;
-      let errorMessage = tRef.current('history.convertFailed');
-
-      if (errorCode && tRef.current(`history.conversionErrors.${errorCode}`)) {
-        errorMessage = tRef.current(`history.conversionErrors.${errorCode}`);
-      }
-
-      addToast(errorMessage, 'error');
-
-      // Always reload on failure: the optimistic update made the convert button
-      // disappear, so without a rollback the user could neither retry (FILE_LOCKED)
-      // nor see the session's true entrypoint.
-      reloadHistory();
-    } catch (error) {
-      console.error('[Frontend] Failed to parse conversion result:', error);
-      addToast(tRef.current('history.convertFailed'), 'error');
-      reloadHistory();
-    }
   };
 }
