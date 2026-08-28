@@ -33,6 +33,7 @@ import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
 import { ToastContainer } from './components/Toast';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatScreen } from './components/ChatScreen';
 import { useSubagentContextValues, useSetTaskEvents } from './contexts/SubagentContext';
@@ -135,7 +136,6 @@ const App = () => {
     setPermissionMode,
     setSelectedPiModel,
     setReasoningEffort, setPiThinkingLevels,
-    setActiveProviderConfig,
     setStreamingEnabledSetting, setSendShortcut, setAutoOpenFileEnabled,
     setSelectedAgent,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
@@ -237,7 +237,6 @@ const App = () => {
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     setPermissionMode, setSelectedPiModel,
     setReasoningEffort, setPiThinkingLevels,
-    setActiveProviderConfig,
     setStreamingEnabledSetting,
     setSendShortcut, setAutoOpenFileEnabled,
     setContextInfo, setSelectedAgent,
@@ -407,11 +406,13 @@ const App = () => {
       />
 
       {currentView === 'settings' ? (
-        <SettingsView
-          onClose={() => setCurrentView('chat')}
-          initialTab={settingsInitialTab}
-          onSendBehaviorModeChange={handleSendBehaviorModeChange}
-        />
+        <ErrorBoundary>
+          <SettingsView
+            onClose={() => setCurrentView('chat')}
+            initialTab={settingsInitialTab}
+            onSendBehaviorModeChange={handleSendBehaviorModeChange}
+          />
+        </ErrorBoundary>
       ) : (
         <>
           {/* Keep ChatScreen mounted while browsing history so model catalog,
@@ -421,7 +422,8 @@ const App = () => {
               ? { display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column', overflow: 'hidden' }
               : { display: 'none' }}
           >
-            <ChatScreen
+            <ErrorBoundary>
+              <ChatScreen
               mergedMessages={mergedMessages}
               getMessageText={getMessageText}
               getContentBlocks={getContentBlocks}
@@ -451,18 +453,21 @@ const App = () => {
               statusPanelExpanded={statusPanelExpanded}
               onToggleStatusPanel={() => setStatusPanelExpanded((prev) => !prev)}
             />
+            </ErrorBoundary>
           </div>
           {currentView === 'history' && (
-            <HistoryView
-              historyData={historyData}
-              currentProvider={currentProvider}
-              currentSessionId={currentSessionId}
-              onLoadSession={loadHistorySession}
-              onDeleteSession={deleteHistorySession}
-              onDeleteSessions={deleteHistorySessions}
-              onUpdateTitle={updateHistoryTitle}
-              onConvertToCliSession={convertToCliSession}
-            />
+            <ErrorBoundary>
+              <HistoryView
+                historyData={historyData}
+                currentProvider={currentProvider}
+                currentSessionId={currentSessionId}
+                onLoadSession={loadHistorySession}
+                onDeleteSession={deleteHistorySession}
+                onDeleteSessions={deleteHistorySessions}
+                onUpdateTitle={updateHistoryTitle}
+                onConvertToCliSession={convertToCliSession}
+              />
+            </ErrorBoundary>
           )}
         </>
       )}

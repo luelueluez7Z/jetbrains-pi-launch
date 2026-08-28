@@ -21,8 +21,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     setSelectedPiModel,
     setReasoningEffort,
     setPiThinkingLevels,
-    setActiveProviderConfig,
-    setStreamingEnabledSetting,
+      setStreamingEnabledSetting,
     setSendShortcut,
     setAutoOpenFileEnabled,
     setPermissionDialogTimeoutSeconds,
@@ -121,14 +120,8 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     window.applyBackendTabState(pending);
   }
 
-  window.updateActiveProvider = (jsonStr: string) => {
-    try {
-      const provider = JSON.parse(jsonStr);
-      setActiveProviderConfig(provider);
-    } catch (error) {
-      console.error('[Frontend] Failed to parse active provider in App:', error);
-    }
-  };
+  // pi-only：后端仍推 updateActiveProvider（{id:'pi'}），前端已无消费者，保留 no-op 占位
+  window.updateActiveProvider = () => {};
 
   window.updateThinkingEnabled = (jsonStr: string) => {
     // cc-gui 的 Claude 专属开关，pi 无此概念——忽略

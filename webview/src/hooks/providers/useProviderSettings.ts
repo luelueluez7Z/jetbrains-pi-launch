@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { sendBridgeEvent } from '../../utils/bridge';
-import type { ProviderConfig } from '../../types/provider';
 import type { SelectedAgent } from '../../components/ChatInputBox/types';
 
 export interface UseProviderSettingsOptions {
@@ -11,7 +10,7 @@ export interface UseProviderSettingsOptions {
 
 /**
  * Cross-cutting provider settings: streaming, send shortcut, auto-open file,
- * selected agent, and the active provider config. Each setting handler pushes
+ * and the selected agent. Each setting handler pushes
  * the change to the backend via bridge event and (where applicable) toasts the
  * user-visible state change. Loads the previously-selected agent on mount,
  * retrying until the JCEF bridge is ready.
@@ -21,7 +20,6 @@ export function useProviderSettings({ addToast, t }: UseProviderSettingsOptions)
   const [sendShortcut, setSendShortcut] = useState<'enter' | 'cmdEnter'>('enter');
   const [autoOpenFileEnabled, setAutoOpenFileEnabled] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
-  const [activeProviderConfig, setActiveProviderConfig] = useState<ProviderConfig | null>(null);
 
   // Load previously-selected agent on mount, retrying until JCEF bridge is ready.
   useEffect(() => {
@@ -91,8 +89,6 @@ export function useProviderSettings({ addToast, t }: UseProviderSettingsOptions)
     setAutoOpenFileEnabled,
     selectedAgent,
     setSelectedAgent,
-    activeProviderConfig,
-    setActiveProviderConfig,
     handleAgentSelect,
     handleStreamingEnabledChange,
     handleSendShortcutChange,

@@ -612,7 +612,6 @@ interface Window {
   /**
    * Update prompt enhancer settings config from backend
    */
-  updatePromptEnhancerConfig?: (json: string) => void;
 
   /**
    * Update commit AI settings config from backend

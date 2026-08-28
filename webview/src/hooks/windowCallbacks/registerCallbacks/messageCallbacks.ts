@@ -8,7 +8,7 @@
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
-import type { ClaudeMessage, CodexHistoryPageInfo } from '../../../types';
+import type { ClaudeMessage, CodexHistoryPageInfo, HistoryData } from '../../../types';
 import { sendBridgeEvent } from '../../../utils/bridge';
 import {
   appendOptimisticMessageIfMissing,
@@ -638,7 +638,20 @@ export function registerMessageCallbacks(
     if (!summary || !summary.trim()) return;
     setStatus(summary);
   };
-  window.setHistoryData = (data) => setHistoryData(data);
+  // 后端 callWeb 推的是 JSON 字符串（对齐全库"json string + 前端 parse"约定），
+  // 旧实现直接把字符串塞进 state 导致 historyData.sessions 为 undefined。
+  window.setHistoryData = (data) => {
+    if (typeof data === 'string') {
+      try {
+        setHistoryData(JSON.parse(data) as HistoryData);
+      } catch {
+        console.error('[setHistoryData] 无效 JSON:', data.slice(0, 200));
+      }
+    } else {
+      // 兼容已有测试直接传对象
+      setHistoryData(data);
+    }
+  };
 
   const pendingStatus = (window as unknown as Record<string, unknown>).__pendingStatusText;
   if (typeof pendingStatus === 'string' && pendingStatus.length > 0) {

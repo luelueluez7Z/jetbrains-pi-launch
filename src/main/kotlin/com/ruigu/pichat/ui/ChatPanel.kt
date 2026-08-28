@@ -1,66 +1,10 @@
 package com.ruigu.pichat.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.intellij.notification.NotificationDisplayType
-import com.intellij.notification.NotificationGroup
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
@@ -72,7 +16,6 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbService
 import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
-import com.intellij.diff.contents.DiffContent
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.fileTypes.FileTypeManager
@@ -84,32 +27,32 @@ import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefJSQuery
+import com.ruigu.pichat.ide.IdeIntegrator
 import com.ruigu.pichat.rpc.ExtensionUiRequest
 import com.ruigu.pichat.rpc.PiListener
 import com.ruigu.pichat.rpc.RpcClient
-import com.ruigu.pichat.rpc.RpcResponse
-import org.jetbrains.jewel.ui.Orientation
-import org.jetbrains.jewel.ui.component.Divider
-import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.component.TextField
-import org.cef.browser.CefBrowser
-import org.cef.browser.CefFrame
-import org.cef.handler.CefLoadHandlerAdapter
-import java.io.IOException
+import com.ruigu.pichat.session.SessionItem
+import com.ruigu.pichat.session.SessionRegexes
+import com.ruigu.pichat.session.applySessionMessage
+import com.ruigu.pichat.session.appendSessionInfo
+import com.ruigu.pichat.session.finalizeInterruptedTools
+import com.ruigu.pichat.session.scanSessionDirectory
+import com.ruigu.pichat.session.textOf
+import com.ruigu.pichat.session.isStrayThinkingTag
+import com.ruigu.pichat.session.parseSessionId
+import com.ruigu.pichat.session.readLeafId
+import com.ruigu.pichat.session.readSessionFile
+import com.ruigu.pichat.session.readSessionTitle
+import com.ruigu.pichat.session.stripMagicContextMarks
+import com.ruigu.pichat.session.stripThinkingTags
+import com.ruigu.pichat.session.str
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.time.Instant
-import java.time.ZoneId
-import java.nio.file.attribute.BasicFileAttributes
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
-import java.time.format.DateTimeFormatter
 import java.util.Comparator
 import java.util.IdentityHashMap
-import java.util.LinkedHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.awt.BorderLayout
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -126,54 +69,38 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private val LOG = Logger.getInstance(ChatPanel::class.java)
 
     private data class ModelItem(val provider: String, val id: String, val name: String, val contextWindow: Long = 0)
-    private data class SessionItem(
-        val path: String,
-        val name: String,
-        val isCurrent: Boolean,
-        val title: String? = null,
-        val id: String = parseSessionId(name),
-        val firstMessage: String = "",
-        val messageCount: Int = 0,
-        val lastTimestamp: Long = 0L,
-    )
-    private data class ExtensionDialogState(val request: ExtensionUiRequest)
 
     @Volatile
     private lateinit var client: RpcClient
     /** 单会话模式：同时只保留一个 pi 进程（与终端 pi 一致），切换会话即重启进程 */
     private val pendingSessionSwitch = IdentityHashMap<RpcClient, String>()
-    private var streaming = false
+
+    /** 流式进行中标记：RPC 读线程写（onAgentStart/onAgentSettled）、EDT 读（sendMessage 决定 steer/followUp），需要原子可见。 */
+    private val streaming = AtomicBoolean(false)
+
+    /** 当前流式占位消息：RPC 读线程创建/判断、EDT 落定置空，需 volatile 保证跨线程可见。 */
+    @Volatile
     private var streamingAssistant: ChatMessage? = null
 
-    // ================= Compose 状态（EDT） =================
+    // ================= 状态（EDT 修改，经 publishWebState 推送到 webview） =================
 
-    private val statusText = mutableStateOf("● 连接中…")
-    private val statusTip = mutableStateOf("")
-    private val queueCount = mutableStateOf(0)
-    private val connected = mutableStateOf(false)
-    private val messages = mutableStateListOf<ChatMessage>()
-    private val isStreamingMsg = mutableStateOf(false)
-    private val streamingText = mutableStateOf("")
-    private val streamingThinking = mutableStateOf("")
-    private val busy = mutableStateOf(false)
-    private val inputText = mutableStateOf(TextFieldValue(""))
-    private val sendHint = mutableStateOf("Enter 发送 · Shift+Enter 换行")
-    // 发送新消息后请求滚动到底部（保证用户消息可见）
-    private val scrollRequest = mutableStateOf(0)
+    private var statusText = "● 连接中…"
+    private var statusTip = ""
+    private var queueCount = 0
+    private var connected = false
+    private val messages = mutableListOf<ChatMessage>()
+    private var isStreamingMsg = false
+    private var streamingText = ""
+    private var streamingThinking = ""
+    private var busy = false
 
-    private val models = mutableStateListOf<ModelItem>()
-    private val currentModel = mutableStateOf<ModelItem?>(null)
-    private val thinkingLevels = mutableStateListOf<String>()
-    private val currentThinking = mutableStateOf<String?>(null)
-    private val sessions = mutableStateListOf<SessionItem>()
-    private val currentSessionFile = mutableStateOf("")
+    private val models = mutableListOf<ModelItem>()
+    private var currentModel: ModelItem? = null
+    private val thinkingLevels = mutableListOf<String>()
+    private var currentThinking: String? = null
+    private val sessions = mutableListOf<SessionItem>()
+    private var currentSessionFile = ""
 
-    // 选择器弹窗状态
-    private val showModelPicker = mutableStateOf(false)
-    private val showThinkingPicker = mutableStateOf(false)
-    private val showSessionPicker = mutableStateOf(false)
-    private val showNewSessionDialog = mutableStateOf(false)
-    private val extensionDialog = mutableStateOf<ExtensionDialogState?>(null)
     /** Webview AskUserQuestionDialog 的 requestId → pi extension_ui 请求映射。 */
     private val askUserByRequestId = HashMap<String, ExtensionUiRequest>()
 
@@ -191,6 +118,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private var webUpdateQueued = false
     private var webSequence = 0
     private var webStatusSent: String? = null
+
 
     private fun modelKey(model: ModelItem): String = "${model.provider}::${model.id}"
 
@@ -238,7 +166,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     // 切换会话：跳过 handleStateReady 内的 loadHistory（异步），
                     // 避免它晚到后覆盖 switchSession 加载的目标会话历史。
                     handleStateReady(data, loadHistory = false)
-                    candidate.switchSession(target).thenAccept { result ->
+                    candidate.switchSession(target).logFailure("switch_session").thenAccept { result ->
                         onEdt {
                             if (candidate !== client) return@onEdt
                             if (result != null && result.success()) {
@@ -262,6 +190,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     // ================= 生命周期 =================
+
+    private val ide = IdeIntegrator(project) { msg -> callWeb("addToast", msg, "error") }
 
     private fun setupWebUi() {
         browserQuery.addHandler { raw ->
@@ -338,15 +268,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             }?.let { selectModel(it) }
             "selectThinking" -> action.str("level").takeIf { it.isNotEmpty() }?.let { selectThinking(it) }
             "selectSession" -> sessions.firstOrNull { it.path == action.str("path") }?.let { selectSession(it) }
-            "extensionRespond" -> extensionDialog.value?.request?.let { request ->
-                if (action.has("cancelled") && action.get("cancelled").asBoolean) {
-                    cancelExtension(request)
-                } else {
-                    val value = action.str("value").takeIf { it.isNotEmpty() }
-                    val confirmed = if (action.has("confirmed")) action.get("confirmed").asBoolean else null
-                    completeExtension(request, value, confirmed)
-                }
-            }
         }
     }
 
@@ -424,8 +345,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             "delete_session" -> deleteSession(content)
             "delete_sessions" -> deleteSessions(content)
             "update_title" -> updateSessionTitle(content)
-            "open_file" -> handleOpenFile(content)
-            "show_diff" -> handleShowDiff(content)
+            "open_file" -> ide.openFile(content)
+            "show_diff" -> ide.showDiff(content)
             "set_plan_mode" -> handleSetPlanMode(content)
             "compact_session" -> handleCompactSession()
             "enhance_prompt" -> handleEnhancePrompt(content)
@@ -441,137 +362,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         callWeb("updateDependencyStatus", "{}")
     }
 
-    /**
-     * 处理 open_file：在 IDEA 编辑器中打开文件并定位到行（支持 path:line / path:line-start-end）。
-     * 解析链：绝对路径 → 相对项目根 → 文件名模糊匹配（FilenameIndex）。
-     */
-    private fun handleOpenFile(rawPath: String) {
-        if (rawPath.isBlank() || project.isDisposed) return
-        val linePattern = Regex("^(.*):(\\d+)(?:-(\\d+))?$")
-        var path = rawPath
-        var line = -1
-        var endLine = -1
-        linePattern.matchEntire(rawPath)?.let { m ->
-            val candidate = m.groupValues[1]
-            // 排除 Windows 盘符/时间戳式误判（如 C:\... 或 xxx:42:13）
-            if (candidate.isNotBlank() && !candidate.matches(Regex(".*:\\d+$"))) {
-                path = candidate
-                line = m.groupValues[2].toIntOrNull() ?: -1
-                endLine = m.groupValues[3].toIntOrNull() ?: -1
-            }
-        }
-        val vf = resolveFileForOpen(path)
-        if (vf == null) {
-            LOG.warn("[PiChatDiag] open_file 未找到: " + path)
-            callWeb("addToast", "无法打开文件：" + path, "error")
-            return
-        }
-        openInEditor(vf, line, endLine)
-    }
 
-    /**
-     * 处理 show_diff：在 IDEA 中打开 Diff 窗口对比文件的修改前后内容。
-     * 前端已传 oldContent/newContent（工具卡中的修改前后内容），无需读磁盘。
-     * 对齐 cc-gui 的 SimpleDiffDisplayHandler：项目内路径校验 + DiffContentFactory 语法高亮。
-     */
-    private fun handleShowDiff(content: String) {
-        val params = try {
-            JsonParser.parseString(content).asJsonObject
-        } catch (e: Exception) {
-            LOG.warn("[PiChatDiag] show_diff 参数解析失败: " + e.message)
-            return
-        }
-        val filePath = params.str("filePath")
-        if (filePath.isBlank()) return
-        val oldContent = params.str("oldContent")
-        val newContent = params.str("newContent")
-        val title = params.str("title")
-
-        // 路径安全校验：仅允许项目内文件（防止前端传任意路径）
-        val basePath = project.basePath
-        if (basePath == null) {
-            LOG.warn("[PiChatDiag] show_diff 拒绝：项目无 basePath")
-            return
-        }
-        val normalizedPath = filePath.replace('\\', '/')
-        val normalizedBase = basePath.replace('\\', '/').trimEnd('/')
-        if (!normalizedPath.startsWith(normalizedBase, ignoreCase = true)) {
-            LOG.warn("[PiChatDiag] show_diff 拒绝项目外路径: " + filePath)
-            callWeb("addToast", "无法显示 Diff（文件不在项目中）：" + filePath, "error")
-            return
-        }
-
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
-            try {
-                val fileName = filePath.substringAfterLast('/').substringAfterLast('\\')
-                val fileType = FileTypeManager.getInstance().getFileTypeByFileName(fileName)
-                val left = DiffContentFactory.getInstance().create(project, oldContent, fileType)
-                val right = DiffContentFactory.getInstance().create(project, newContent, fileType)
-                val diffTitle = if (title.isNotBlank()) title else "$fileName 修改对比"
-                val request = SimpleDiffRequest(diffTitle, left, right, "修改前", "修改后")
-                DiffManager.getInstance().showDiff(project, request)
-            } catch (e: Exception) {
-                LOG.error("[PiChatDiag] show_diff 打开失败: " + e.message, e)
-            }
-        }
-    }
-
-    private fun resolveFileForOpen(path: String): VirtualFile? {
-        val direct = File(path)
-        if (direct.exists()) {
-            return LocalFileSystem.getInstance().findFileByIoFile(direct)
-        }
-        val basePath = project.basePath
-        if (basePath != null) {
-            val rel = File(basePath, path)
-            if (rel.exists()) {
-                return LocalFileSystem.getInstance().findFileByIoFile(rel)
-            }
-        }
-        // 文件名模糊匹配（IDEA 索引，需要 read action）
-        if (DumbService.isDumb(project)) return null
-        val fileName = path.substringAfterLast('/').substringAfterLast('\\')
-        if (fileName.isBlank()) return null
-        val suffix = path.replace('\\', '/')
-        val matches: Collection<VirtualFile> = ApplicationManager.getApplication().runReadAction(
-            Computable { FilenameIndex.getVirtualFilesByName(fileName, GlobalSearchScope.projectScope(project)) }
-        )
-        if (matches.isEmpty()) return null
-        matches.firstOrNull { it.path.replace('\\', '/').endsWith(suffix) }?.let { return it }
-        matches.firstOrNull { it.path.replace('\\', '/').contains(suffix) }?.let { return it }
-        matches.firstOrNull { it.path.contains("/src/") || it.path.contains("\\src\\") }?.let { return it }
-        return matches.first()
-    }
-
-    /** 在编辑器中打开文件，可选定位行号/选区。 */
-    private fun openInEditor(vf: VirtualFile, line: Int, endLine: Int) {
-        if (project.isDisposed || !vf.isValid) return
-        if (line <= 0) {
-            FileEditorManager.getInstance(project).openFile(vf, true)
-            return
-        }
-        val descriptor = OpenFileDescriptor(project, vf)
-        val editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, true)
-        if (editor == null) {
-            FileEditorManager.getInstance(project).openFile(vf, true)
-            return
-        }
-        val doc = editor.document
-        val lineCount = doc.lineCount
-        if (lineCount <= 0) return
-        val zeroLine = line.coerceIn(1, lineCount) - 1
-        val startOffset = doc.getLineStartOffset(zeroLine)
-        editor.caretModel.moveToOffset(startOffset)
-        if (endLine >= line) {
-            val zeroEnd = endLine.coerceIn(1, lineCount) - 1
-            editor.selectionModel.setSelection(startOffset, doc.getLineEndOffset(zeroEnd))
-        } else {
-            editor.selectionModel.removeSelection()
-        }
-        editor.scrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
-        editor.contentComponent.requestFocus()
-    }
 
     /**
      * 处理 load_subagent_session：从 tool 执行时保留的 details（subagent 工具的
@@ -681,7 +472,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             addProperty("provider", "pi")
             addProperty("success", true)
             add("models", modelRows)
-            currentModel.value?.let { addProperty("defaultModel", modelKey(it)) }
+            currentModel?.let { addProperty("defaultModel", modelKey(it)) }
         }
         callWeb("setCliModels", gson.toJson(payload))
     }
@@ -853,7 +644,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     addProperty("messageCount", if (session.isCurrent) messages.size else session.messageCount)
                     if (session.lastTimestamp > 0) addProperty("lastTimestamp", java.time.Instant.ofEpochMilli(session.lastTimestamp).toString())
                     addProperty("provider", "pi")
-                    currentModel.value?.let { addProperty("model", it.id) }
+                    currentModel?.let { addProperty("model", it.id) }
                 })
             }
         }
@@ -873,21 +664,21 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             if (!webUiReady || browser.isDisposed) return@invokeLater
             val snapshot = webMessages()
             callWeb("updateMessages", gson.toJson(snapshot), ++webSequence)
-            val status = statusText.value.removePrefix("● ")
+            val status = statusText.removePrefix("● ")
             if (status != webStatusSent) {
                 webStatusSent = status
                 callWeb("updateStatus", status)
             }
-            callWeb("showLoading", busy.value)
-            if (currentSessionFile.value.isNotBlank()) callWeb("setSessionId", currentSessionFile.value)
-            currentModel.value?.let { model ->
+            callWeb("showLoading", busy)
+            if (currentSessionFile.isNotBlank()) callWeb("setSessionId", currentSessionFile)
+            currentModel?.let { model ->
                 callWeb("onModelConfirmed", modelKey(model), "pi")
             }
             callWeb("applyBackendTabState", gson.toJson(JsonObject().apply {
                 addProperty("provider", "pi")
-                currentModel.value?.let { addProperty("model", modelKey(it)) }
+                currentModel?.let { addProperty("model", modelKey(it)) }
                 addProperty("permissionMode", "default")
-                addProperty("reasoningEffort", currentThinking.value ?: "off")
+                addProperty("reasoningEffort", currentThinking ?: "off")
                 add("piThinkingLevels", JsonArray().also { levels -> thinkingLevels.forEach { levels.add(it) } })
             }))
             // Plan 模式状态（pi-plan-mode 扩展），会话恢复/切换后同步给前端 ModeSelect
@@ -900,11 +691,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun webMessages(): JsonArray = JsonArray().also { result ->
         messages.forEach { message ->
-            if (message === streamingAssistant && isStreamingMsg.value) {
+            if (message === streamingAssistant && isStreamingMsg) {
                 // 流式占位消息：用实时累积的文本渲染，保持消息在会话中的正确顺序
                 // （否则末尾追加会导致后续工具消息排在 assistant 之前）
                 result.add(assistantMessage(
-                    streamingText.value, streamingThinking.value, true, message.getTimestamp()))
+                    streamingText, streamingThinking, true, message.getTimestamp()))
             } else if (message.kind == ChatMessage.Kind.TOOL) {
                 result.add(toolUseMessage(message))
                 if (message.toolStatus != "running" || message.toolResult.isNotBlank()) {
@@ -969,12 +760,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                         addProperty("type", "tool_use")
                         addProperty("id", message.toolCallId ?: "tool-${message.timestamp}")
                         addProperty("name", message.toolName ?: "tool")
-                        add("input", try {
-                            JsonParser.parseString(message.argsSummary).takeIf { it.isJsonObject }?.asJsonObject
-                                ?: JsonObject().apply { addProperty("summary", message.argsSummary) }
-                        } catch (_: Exception) {
-                            JsonObject().apply { addProperty("summary", message.argsSummary) }
-                        })
+                        // argsSummary 解析结果缓存在 ChatMessage 里（每次 publishWebState 都会调到这里）
+                        add("input", message.getArgsAsJson())
                     })
                 })
             })
@@ -1024,8 +811,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 val msg = "无法启动 pi：\n" + e.message
                 onEdt {
                     if (target !== client) return@onEdt
-                    connected.value = false
-                    statusText.value = "✗ 未连接"
+                    connected = false
+                    statusText = "✗ 未连接"
                     messages.add(ChatMessage.error(msg))
                     publishWebState()
                 }
@@ -1035,11 +822,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun handleStateReady(data: JsonObject, loadHistory: Boolean = true) {
         LOG.info("[PiChatDiag] handleStateReady: " + data)
-        connected.value = true
-        statusText.value = "● 已连接"
+        connected = true
+        statusText = "● 已连接"
         val sessionFile = data.str("sessionFile")
-        currentSessionFile.value = sessionFile
-        statusTip.value = (if (sessionFile.isNotEmpty()) "会话文件: $sessionFile\n" else "") + "工作目录: ${client.cwd}"
+        currentSessionFile = sessionFile
+        statusTip = (if (sessionFile.isNotEmpty()) "会话文件: $sessionFile\n" else "") + "工作目录: ${client.cwd}"
         val model = if (data.has("model") && data.get("model").isJsonObject) data.getAsJsonObject("model") else null
         val provider = model?.str("provider") ?: ""
         val id = model?.str("id") ?: ""
@@ -1054,7 +841,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     override fun dispose() {
-        client.close()
+        // dispose 在 EDT 触发；进程销毁异步化避免工具窗口关闭时卡顿
+        client.closeAsync()
         browserQuery.dispose()
         browser.dispose()
     }
@@ -1069,23 +857,21 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private fun clearMessages() {
         messages.clear()
         streamingAssistant = null
-        isStreamingMsg.value = false
-        streamingText.value = ""
-        streamingThinking.value = ""
+        isStreamingMsg = false
+        streamingText = ""
+        streamingThinking = ""
         publishWebState()
     }
 
     // ================= 动作 =================
 
-    private fun sendMessage(textOverride: String? = null, behavior: String = "steer", images: List<JsonObject> = emptyList()) {
-        val text = (textOverride ?: inputText.value.text).trim()
+    private fun sendMessage(textOverride: String, behavior: String = "steer", images: List<JsonObject> = emptyList()) {
+        val text = textOverride.trim()
         if (text.isEmpty() || !client.isRunning()) return
-        System.out.println("[PiChat] send: " + text.take(50))
-        inputText.value = TextFieldValue("")
+        LOG.info("[PiChatDiag] send: " + text.take(50))
         messages.add(ChatMessage.user(text))
-        scrollRequest.value++
         publishWebState()
-        if (streaming) {
+        if (streaming.get()) {
             // 对话进行中：steer 打断引导；followUp 排队等待当前对话完成
             if (behavior == "followUp") {
                 client.followUp(text, images)
@@ -1115,36 +901,32 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun abort() {
         client.abort()
-        busy.value = false
+        busy = false
         addSystem("⏹ 已请求停止")
     }
 
-    private fun newSession() {
-        showNewSessionDialog.value = true
-    }
-
     private fun confirmNewSession() {
-        showNewSessionDialog.value = false
-        // 单会话模式：先停掉旧进程，再启动新会话进程（与终端 pi 一致）
-        client.close()
+        // 单会话模式：先停掉旧进程，再启动新会话进程（与终端 pi 一致）。
+        // closeAsync：EDT 上不能等 waitFor(2s)，否则切换会话时 UI 冻结。
+        client.closeAsync()
         val next = createClient(client.cwd)
         client = next
         clearMessages()
-        currentSessionFile.value = ""
-        connected.value = false
-        statusText.value = "● 连接中…"
+        currentSessionFile = ""
+        connected = false
+        statusText = "● 连接中…"
         startClient(next)
     }
 
     private fun refreshStatus() {
-        client.getState().thenAccept { res ->
+        client.getState().logFailure("get_state").thenAccept { res ->
             onEdt {
                 if (res != null && res.success() && res.data() != null) {
                     val d = res.data()
                     val sessionFile = d.str("sessionFile")
-                    currentSessionFile.value = sessionFile
-                    statusText.value = "● 已连接"
-                    statusTip.value = (if (sessionFile.isNotEmpty()) "会话文件: $sessionFile\n" else "") + "工作目录: ${client.cwd}"
+                    currentSessionFile = sessionFile
+                    statusText = "● 已连接"
+                    statusTip = (if (sessionFile.isNotEmpty()) "会话文件: $sessionFile\n" else "") + "工作目录: ${client.cwd}"
                     if (d.has("model") && d.get("model").isJsonObject) {
                         val m = d.getAsJsonObject("model")
                         syncModelSelection(m.str("provider"), m.str("id"))
@@ -1161,10 +943,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     /** Reads Pi's native session counters for the compact status line above the input. */
     private fun loadSessionStats() {
-        client.getSessionStats().thenAccept { res ->
+        client.getSessionStats().logFailure("get_session_stats").thenAccept { res ->
             onEdt {
                 if (res == null || !res.success() || res.data() == null) return@onEdt
-                statusText.value = formatPiStatus(res.data())
+                statusText = formatPiStatus(res.data())
                 // 上下文占用圈数据（TokenIndicator）
                 val d = res.data()
                 val context = if (d.has("contextUsage") && d.get("contextUsage").isJsonObject) d.getAsJsonObject("contextUsage") else null
@@ -1208,7 +990,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         val cachePercent = if (cacheBase > 0) cacheRead * 100.0 / cacheBase else 0.0
         // 累计费用（pi getSessionStats 的 cost 字段，跨全部会话条目含压缩历史；与 TUI footer 的 $x.xxx 显示一致）
         val cost = if (data.has("cost") && data.get("cost").isJsonPrimitive) data.get("cost").asDouble else 0.0
-        val phase = if (busy.value) "正在回复…" else "空闲"
+        val phase = if (busy) "正在回复…" else "空闲"
         val contextPart = if (max > 0) "${formatTokenCount(used)}/${formatTokenCount(max)} (${formatPercent(percent)})" else "${formatTokenCount(used)}"
         // cost > 0 才显示（如 $0.123），与 TUI 对齐
         val costPart = if (cost > 0) " · \$" + String.format(java.util.Locale.ROOT, "%.3f", cost) else ""
@@ -1233,12 +1015,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     private fun selectModel(item: ModelItem) {
-        showModelPicker.value = false
-        val sameModel = currentModel.value?.let { it.provider == item.provider && it.id == item.id } == true
-        client.setModel(item.provider, item.id).thenAccept { res ->
+        val sameModel = currentModel?.let { it.provider == item.provider && it.id == item.id } == true
+        client.setModel(item.provider, item.id).logFailure("set_model").thenAccept { res ->
             onEdt {
                 if (res != null && res.success()) {
-                    currentModel.value = item
+                    currentModel = item
                     if (!sameModel) addSystem("已切换模型: ${item.name}")
                     loadThinkingLevels("")
                 } else {
@@ -1249,11 +1030,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     private fun selectThinking(level: String) {
-        showThinkingPicker.value = false
-        client.setThinkingLevel(level).thenAccept { res ->
+        client.setThinkingLevel(level).logFailure("set_thinking_level").thenAccept { res ->
             onEdt {
                 if (res != null && res.success()) {
-                    currentThinking.value = level
+                    currentThinking = level
                     addSystem("已切换思考强度: $level")
                 } else {
                     addSystem("切换思考强度失败: " + (res?.error() ?: "无响应"))
@@ -1263,18 +1043,18 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     private fun selectSession(item: SessionItem) {
-        showSessionPicker.value = false
         if (item.isCurrent) return
 
-        // 单会话模式：先停掉当前 pi 进程，再启动新进程恢复目标会话
-        client.close()
+        // 单会话模式：先停掉当前 pi 进程，再启动新进程恢复目标会话。
+        // closeAsync：EDT 上不能等 waitFor(2s)，否则切换会话时 UI 冻结。
+        client.closeAsync()
         val next = createClient(client.cwd)
         pendingSessionSwitch[next] = item.path
         client = next
         clearMessages()
-        currentSessionFile.value = ""
-        connected.value = false
-        statusText.value = "● 连接中…"
+        currentSessionFile = ""
+        connected = false
+        statusText = "● 连接中…"
         startClient(next)
     }
 
@@ -1282,7 +1062,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun loadModels(currentProvider: String, currentId: String) {
         LOG.info("[PiChatDiag] loadModels(provider=" + currentProvider + ", id=" + currentId + ")")
-        client.getAvailableModels().thenAccept { res ->
+        client.getAvailableModels().logFailure("get_available_models").thenAccept { res ->
             onEdt {
                 if (res == null || !res.success() || res.data() == null || !res.data().has("models")) {
                     LOG.warn("[PiChatDiag] get_available_models 失败: " + (if (res == null) "null" else res.toString()))
@@ -1305,7 +1085,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 models.addAll(list)
                 // 选中当前模型
                 val cur = list.firstOrNull { it.provider == currentProvider && it.id == currentId }
-                currentModel.value = cur ?: list.firstOrNull()
+                currentModel = cur ?: list.firstOrNull()
                 publishWebState()
                 // Replace the web UI's static fallback catalog with Pi's live
                 // get_available_models snapshot once the RPC response arrives.
@@ -1315,7 +1095,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     private fun loadThinkingLevels(currentLevel: String) {
-        client.getThinkingLevels().thenAccept { res ->
+        client.getThinkingLevels().logFailure("get_available_thinking_levels").thenAccept { res ->
             onEdt {
                 if (res == null || !res.success() || res.data() == null || !res.data().has("levels")) return@onEdt
                 val arr = res.data().getAsJsonArray("levels")
@@ -1323,10 +1103,10 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                 for (el in arr) {
                     if (el.isJsonPrimitive) list.add(el.asString)
                 }
-                val prev = currentThinking.value
+                val prev = currentThinking
                 thinkingLevels.clear()
                 thinkingLevels.addAll(list)
-                currentThinking.value = when {
+                currentThinking = when {
                     currentLevel.isNotEmpty() && list.contains(currentLevel) -> currentLevel
                     prev != null && list.contains(prev) -> prev
                     else -> list.firstOrNull()
@@ -1338,20 +1118,26 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun syncModelSelection(provider: String, id: String) {
         val m = models.firstOrNull { it.provider == provider && it.id == id }
-        if (m != null) currentModel.value = m
+        if (m != null) currentModel = m
     }
 
     private fun syncThinkingSelection(level: String) {
-        if (level.isNotEmpty() && thinkingLevels.contains(level)) currentThinking.value = level
+        if (level.isNotEmpty() && thinkingLevels.contains(level)) currentThinking = level
     }
 
     private fun loadHistory(force: Boolean = false) {
         // 优先直接读会话文件：会话文件与终端 pi / magic-context 共享，外部写入的最新消息
         // 只能通过读文件拿到（get_messages 返回的是本进程内存快照，会落后）。
-        val file = currentSessionFile.value
+        // 文件可能很大，读/解析都在后台线程执行，避免 EDT 卡顿。
+        val file = currentSessionFile
         if (file.isNotBlank()) {
-            val parsed = readSessionFile(file)
-            if (parsed != null) {
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val parsed = readSessionFile(file)
+                if (parsed == null) {
+                    LOG.warn("[PiChatDiag] loadHistory 读会话文件失败，回退 get_messages: " + file)
+                    loadHistoryFromRpc(force)
+                    return@executeOnPooledThread
+                }
                 // 进程中断时最后一条工具可能没有配对 toolResult：标记中断，避免前端永远转圈
                 finalizeInterruptedTools(parsed)
                 onEdt {
@@ -1362,10 +1148,15 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     messages.addAll(parsed)
                     publishWebState()
                 }
-                return
             }
+            return
         }
-        client.getMessages().thenAccept { res ->
+        loadHistoryFromRpc(force)
+    }
+
+    /** get_messages 兑底路径：文件读取失败/无会话文件时从 pi 进程内存快照加载。 */
+    private fun loadHistoryFromRpc(force: Boolean) {
+        client.getMessages().logFailure("get_messages").thenAccept { res ->
             onEdt {
                 if (res == null || !res.success() || res.data() == null || !res.data().has("messages")) return@onEdt
                 if (!force && messages.isNotEmpty()) return@onEdt
@@ -1390,222 +1181,41 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     /** 重置流式状态（loadHistory 重载/切换会话时调用，避免残留的 streaming 引用污染新会话）。 */
     private fun resetStreamingState() {
         streamingAssistant = null
-        isStreamingMsg.value = false
-        streamingText.value = ""
-        streamingThinking.value = ""
+        isStreamingMsg = false
+        streamingText = ""
+        streamingThinking = ""
     }
 
-    /**
-     * 历史加载收尾：把未配对 toolResult 的 tool 消息（进程中断/会话被强杀，工具没跑完）
-     * 标记为中断（error + 说明），否则前端永远显示“运行中”转圈（没有 toolResult 可渲染）。
-     */
-    private fun finalizeInterruptedTools(parsed: List<ChatMessage>) {
-        parsed.forEach { m ->
-            if (m.kind == ChatMessage.Kind.TOOL && m.toolStatus == "running") {
-                m.toolStatus = "error"
-                m.toolResult = "（会话中断，工具未执行完成）"
-            }
-        }
-    }
 
-    /** 直接读会话 jsonl 文件解析历史消息（与终端 pi 共享，能看到外部写入的最新内容）。 */
-    private fun readSessionFile(file: String): List<ChatMessage>? {
-        return try {
-            val parsed = mutableListOf<ChatMessage>()
-            val toolMap = HashMap<String, ChatMessage>()
-            Files.readAllLines(Path.of(file)).forEach { line ->
-                if (line.isBlank()) return@forEach
-                val entry = try {
-                    gson.fromJson(line, JsonObject::class.java)
-                } catch (e: Exception) {
-                    return@forEach
-                }
-                val m = entry?.get("message")
-                if (m == null || !m.isJsonObject) return@forEach
-                applySessionMessage(parsed, toolMap, m.asJsonObject)
-            }
-            parsed
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /** 把一条会话消息（pi AgentMessage 或其 jsonl 形态）转换为前端 ChatMessage。 */
-    private fun applySessionMessage(messages: MutableList<ChatMessage>, toolMap: HashMap<String, ChatMessage>, m: JsonObject) {
-        if (!m.has("role")) return
-        when (m.get("role").asString) {
-            "user" -> messages.add(ChatMessage.user(textOf(m.get("content"))))
-            "assistant" -> {
-                var am = ChatMessage.assistant()
-                val content = m.get("content")
-                if (content != null && content.isJsonArray) {
-                    for (b in content.asJsonArray) {
-                        if (!b.isJsonObject) continue
-                        val block = b.asJsonObject
-                        val t = block.str("type")
-                        when (t) {
-                            "text" -> {
-                                if (block.has("text")) {
-                                    val text = block.get("text").asString
-                                    // magic-context 压缩重建会把 <thinking>/</thinking> 标签错位：
-                                    // open 标签残留进 thinking 内容，close 标签（如 `</thinking>`）残留进 text 块
-                                    // （可能是孤立块，也可能与真实文本混合）。统一剥离标签，剥离后为空的块忽略。
-                                    // 同时剥离 magic-context 注入的 §N§ / §N°° 消息标记。
-                                    val cleaned = stripMagicContextMarks(stripThinkingTags(text))
-                                    if (!cleaned.isBlank() && !isStrayThinkingTag(cleaned)) am.appendText(cleaned)
-                                }
-                            }
-                            "thinking" -> {
-                                if (block.has("thinking")) {
-                                    // 剥离 thinking 内容里残留的 thinking 标签与 magic-context 标记
-                                    am.appendThinking(stripMagicContextMarks(stripThinkingTags(block.get("thinking").asString)))
-                                }
-                            }
-                            "toolCall" -> {
-                                // 工具调用块：先落定当前 assistant 消息，再作为独立 tool 消息，
-                                // 保证 thinking/text 与工具调用的顺序和实时流式一致
-                                if (!am.isEmpty) {
-                                    messages.add(am)
-                                    am = ChatMessage.assistant()
-                                }
-                                val id = block.str("id").ifEmpty { "tool-" + System.currentTimeMillis() }
-                                val name = block.str("name").ifEmpty { "tool" }
-                                val args = block.get("arguments")
-                                val argsSummary = if (args != null && args.isJsonObject) args.toString() else ""
-                                val tm = ChatMessage.tool(id, name, argsSummary)
-                                toolMap[id] = tm
-                                messages.add(tm)
-                            }
-                        }
-                    }
-                } else if (content != null && content.isJsonPrimitive) {
-                    am.appendText(content.asString)
-                }
-                if (!am.isEmpty) messages.add(am)
-            }
-            "toolResult" -> {
-                val name = m.str("toolName") ?: "tool"
-                val id = m.str("toolCallId") ?: ""
-                // 优先配对到 toolCall 创建的 tool 消息；找不到（压缩可能丢 toolCall）则新建
-                val tm = toolMap[id] ?: ChatMessage.tool(id, name, "").also { messages.add(it) }
-                tm.toolStatus = if (m.str("isError") == "true") "error" else "done"
-                tm.toolResult = textOf(m.get("content"))
-            }
-            "bashExecution" -> {
-                val command = m.str("command") ?: ""
-                val tm = ChatMessage.tool("", "bash", command)
-                tm.toolStatus = "done"
-                tm.toolResult = m.str("output") ?: ""
-                messages.add(tm)
-            }
-        }
-    }
 
     private fun loadSessionList(currentFile: String) {
         if (currentFile.isBlank()) return
-        val dir = try {
-            Path.of(currentFile).parent
-        } catch (e: Exception) {
-            null
-        } ?: return
-        val currentName = try {
-            Path.of(currentFile).fileName.toString()
-        } catch (e: Exception) {
-            ""
-        }
-        val list = mutableListOf<SessionItem>()
-        try {
-            Files.list(dir).use { s ->
-                s.filter { it.fileName.toString().endsWith(".jsonl") }
-                    .sorted(Comparator.comparingLong<Path> { p ->
-                        try {
-                            Files.getLastModifiedTime(p).toMillis()
-                        } catch (e: Exception) {
-                            0L
-                        }
-                    }.reversed())
-                    .forEach { p ->
-                        val name = p.fileName.toString()
-                        val meta = readSessionMeta(p)
-                        list.add(
-                            SessionItem(
-                                p.toString(), name, name == currentName, readSessionTitle(p),
-                                parseSessionId(name), meta.first, meta.second, meta.third,
-                            )
-                        )
-                    }
+        // 扫描目录 + 逐文件读元信息（readSessionMeta 全量读每个 jsonl）都是磁盘 IO，
+        // 放到后台线程执行，结果回 EDT 刷新列表（此前在 EDT 执行是大会话列表 UI 假死的根因）。
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val dir = try {
+                Path.of(currentFile).parent
+            } catch (e: Exception) {
+                null
+            } ?: return@executeOnPooledThread
+            val currentName = try {
+                Path.of(currentFile).fileName.toString()
+            } catch (e: Exception) {
+                ""
             }
-        } catch (e: Exception) {
-            // 目录不可读则忽略
-        }
-        onEdt {
-            sessions.clear()
-            sessions.addAll(list)
-            publishWebState()
-            // sessions 更新完成后立即推送历史数据（标题/删除后列表才能刷新）
-            publishHistoryData()
-        }
-    }
-
-    /** 读会话文件元信息（对齐 pi TUI）：首条 user 消息摘要、消息数、最后活动时间戳。
-     *  返回 Triple(firstMessage, messageCount, lastTimestampEpochMillis)。 */
-    private fun readSessionMeta(file: Path): Triple<String, Int, Long> {
-        var firstMessage = ""
-        var count = 0
-        var lastTs = 0L
-        try {
-            Files.newBufferedReader(file, StandardCharsets.UTF_8).use { reader ->
-                var line = reader.readLine()
-                while (line != null) {
-                    if (line.contains("\"type\":\"message\"")) {
-                        count++
-                        val ts = extractMessageTimestamp(line)
-                        if (ts > 0) lastTs = ts
-                        if (firstMessage.isEmpty() && line.contains("\"role\":\"user\"")) {
-                            val text = extractFirstUserText(line)
-                            if (text.isNotBlank() && text != "[tool_result]") {
-                                // 单行化 + 截断（对齐 TUI 的摘要显示）
-                                firstMessage = text.replace(Regex("[\\r\\n\\t]+"), " ").trim().take(120)
-                            }
-                        }
-                    }
-                    line = reader.readLine()
-                }
+            val list = try {
+                scanSessionDirectory(dir, currentName)
+            } catch (e: Exception) {
+                LOG.warn("[PiChatDiag] loadSessionList 扫描失败: " + dir + " - " + e.message)
+                emptyList()
             }
-        } catch (e: Exception) {
-            // 忽略不可读文件
-        }
-        if (lastTs == 0L) {
-            try { lastTs = Files.getLastModifiedTime(file).toMillis() } catch (e: Exception) {}
-        }
-        return Triple(firstMessage, count, lastTs)
-    }
-
-    /** 从 jsonl 行的 "timestamp":"ISO" 提取 epoch 毫秒。 */
-    private fun extractMessageTimestamp(line: String): Long {
-        return try {
-            val m = Regex("\"timestamp\"\\s*:\\s*\"([^\"]+)\"").find(line) ?: return 0L
-            java.time.Instant.parse(m.groupValues[1]).toEpochMilli()
-        } catch (e: Exception) {
-            0L
-        }
-    }
-
-    /** 从 jsonl 行提取首条 user 消息文本（content 为字符串或数组中的首个 text 块）。 */
-    private fun extractFirstUserText(line: String): String {
-        return try {
-            val obj = JsonParser.parseString(line).asJsonObject
-            val msg = obj.get("message")?.takeIf { it.isJsonObject }?.asJsonObject ?: return ""
-            val content = msg.get("content") ?: return ""
-            if (content.isJsonPrimitive) content.asString
-            else if (content.isJsonArray) {
-                content.asJsonArray.mapNotNull { b ->
-                    if (b.isJsonObject && b.asJsonObject.str("type") == "text")
-                        b.asJsonObject.get("text")?.takeIf { it.isJsonPrimitive }?.asString else null
-                }.firstOrNull() ?: ""
-            } else ""
-        } catch (e: Exception) {
-            ""
+            onEdt {
+                sessions.clear()
+                sessions.addAll(list)
+                publishWebState()
+                // sessions 更新完成后立即推送历史数据（标题/删除后列表才能刷新）
+                publishHistoryData()
+            }
         }
     }
 
@@ -1613,7 +1223,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private fun sessionDir(): Path? {
         return try {
-            Path.of(currentSessionFile.value).parent
+            Path.of(currentSessionFile).parent
         } catch (e: Exception) {
             null
         }
@@ -1651,14 +1261,20 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             callWeb("addToast", "无法删除：会话不存在", "error")
             return
         }
-        val deleted = try {
-            Files.deleteIfExists(target)
-        } catch (e: Exception) {
-            false
+        // 文件删除可能被占用而阻塞，移到后台线程，结果回 EDT 提示 + 刷新列表
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val deleted = try {
+                Files.deleteIfExists(target)
+            } catch (e: Exception) {
+                LOG.warn("[PiChatDiag] deleteSession 失败: " + id + " - " + e.message)
+                false
+            }
+            onEdt {
+                // 成功时前端已乐观弹提示，这里只在失败时提示，避免重复
+                if (!deleted) callWeb("addToast", "删除失败：文件可能被占用", "error")
+                loadSessionList(currentSessionFile)
+            }
         }
-        // 成功时前端已乐观弹提示，这里只在失败时提示，避免重复
-        if (!deleted) callWeb("addToast", "删除失败：文件可能被占用", "error")
-        loadSessionList(currentSessionFile.value)
     }
 
     private fun deleteSessions(content: String) {
@@ -1669,63 +1285,38 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             emptyList()
         }
         if (ids.isEmpty()) return
-        var ok = 0
-        var fail = 0
-        for (id in ids) {
-            val target = try {
-                Path.of(id)
-            } catch (e: Exception) {
-                null
+        // 批量文件删除移到后台线程（同 deleteSession）
+        ApplicationManager.getApplication().executeOnPooledThread {
+            var ok = 0
+            var fail = 0
+            for (id in ids) {
+                val target = try {
+                    Path.of(id)
+                } catch (e: Exception) {
+                    null
+                }
+                if (target == null || !isAllowedSessionPath(id)) {
+                    fail++
+                    continue
+                }
+                try {
+                    if (Files.deleteIfExists(target)) ok++ else fail++
+                } catch (e: Exception) {
+                    LOG.warn("[PiChatDiag] deleteSessions 单项失败: " + id + " - " + e.message)
+                    fail++
+                }
             }
-            if (target == null || !isAllowedSessionPath(id)) {
-                fail++
-                continue
-            }
-            try {
-                if (Files.deleteIfExists(target)) ok++ else fail++
-            } catch (e: Exception) {
-                fail++
+            onEdt {
+                // 成功时前端已乐观弹提示，这里只在失败时提示，避免重复
+                if (ok == 0 && fail > 0) callWeb("addToast", "删除失败：$fail 个会话未能删除", "error")
+                else if (fail > 0) callWeb("addToast", "已删除 $ok 个，$fail 个失败", "warning")
+                loadSessionList(currentSessionFile)
             }
         }
-        // 成功时前端已乐观弹提示，这里只在失败时提示，避免重复
-        if (ok == 0 && fail > 0) callWeb("addToast", "删除失败：$fail 个会话未能删除", "error")
-        else if (fail > 0) callWeb("addToast", "已删除 $ok 个，$fail 个失败", "warning")
-        loadSessionList(currentSessionFile.value)
     }
 
     // ================= 修改会话标题 =================
 
-    /**
-     * 从会话文件尾部反向读取最新的 session_info 记录（pi 的标题存储方式），
-     * 与终端 pi 的 renameSession 行为一致。
-     */
-    private fun readSessionTitle(path: Path): String? {
-        return try {
-            java.io.RandomAccessFile(path.toFile(), "r").use { raf ->
-                val size = raf.length()
-                if (size <= 0) return@use null
-                val tailLen = minOf(size, 64L * 1024)
-                raf.seek(size - tailLen)
-                val bytes = ByteArray(tailLen.toInt())
-                raf.readFully(bytes)
-                val tail = String(bytes, StandardCharsets.UTF_8)
-                var idx = tail.lastIndexOf("\"session_info\"")
-                while (idx >= 0) {
-                    val lineStart = tail.lastIndexOf('\n', idx)
-                    val lineEnd = tail.indexOf('\n', idx)
-                    val line = tail.substring(lineStart + 1, if (lineEnd < 0) tail.length else lineEnd)
-                    val nameMatch = Regex("\"name\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").find(line)
-                    if (nameMatch != null) {
-                        return nameMatch.groupValues[1].replace("\\\"", "\"").replace("\\\\", "\\")
-                    }
-                    idx = tail.lastIndexOf("\"session_info\"", idx - 1)
-                }
-                null
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
 
     private fun updateSessionTitle(content: String) {
         val sessionId = try {
@@ -1751,38 +1342,24 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             callWeb("addToast", "无法修改标题：会话不存在", "error")
             return
         }
-        val clean = title.replace(Regex("[\r\n]+"), " ").trim()
+        val clean = title.replace(SessionRegexes.NEWLINE_RUN, " ").trim()
         if (clean.isEmpty()) {
             callWeb("addToast", "标题不能为空", "error")
             return
         }
-        try {
-            // 读取最后一条记录的 id 作为 parentId，保持 pi 的会话树结构
-            var leafId = ""
-            Files.readAllLines(target, StandardCharsets.UTF_8).forEach { line ->
-                if (line.isBlank()) return@forEach
-                try {
-                    val obj = JsonParser.parseString(line).asJsonObject
-                    if (obj.has("id") && !obj.get("id").isJsonNull) leafId = obj.get("id").asString
-                } catch (e: Exception) {
-                    // 忽略损坏行
+        // 读全量文件取 leafId + 追加写都是磁盘 IO，移到后台线程（此前在 EDT 执行）
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                // 镜像 pi TUI 的 renameSession：追加 session_info 记录（见 SessionFileStore.appendSessionInfo）
+                appendSessionInfo(target, clean)
+                onEdt {
+                    callWeb("addToast", "标题已更新", "success")
+                    loadSessionList(currentSessionFile)
                 }
+            } catch (e: Exception) {
+                LOG.warn("[PiChatDiag] updateSessionTitle 失败: " + sessionId + " - " + e.message)
+                onEdt { callWeb("addToast", "更新标题失败：${e.message}", "error") }
             }
-            val entry = JsonObject().apply {
-                addProperty("type", "session_info")
-                addProperty("id", java.util.UUID.randomUUID().toString())
-                if (leafId.isNotEmpty()) addProperty("parentId", leafId)
-                addProperty("timestamp", java.time.Instant.now().toString())
-                addProperty("name", clean)
-            }
-            Files.writeString(
-                target, gson.toJson(entry) + "\n", StandardCharsets.UTF_8,
-                StandardOpenOption.APPEND,
-            )
-            callWeb("addToast", "标题已更新", "success")
-            loadSessionList(currentSessionFile.value)
-        } catch (e: Exception) {
-            callWeb("addToast", "更新标题失败：${e.message}", "error")
         }
     }
 
@@ -1796,76 +1373,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         callWeb("addToast", "正在压缩上下文…", "info")
     }
 
-    private fun textOf(content: JsonElement?): String {
-        if (content == null || content.isJsonNull) return ""
-        if (content.isJsonPrimitive) return content.asString
-        val sb = StringBuilder()
-        for (el in content.asJsonArray) {
-            if (el.isJsonObject) {
-                val block = el.asJsonObject
-                if (block.has("text") && !block.get("text").isJsonNull) sb.append(block.get("text").asString)
-            }
-        }
-        return sb.toString()
-    }
 
-    /**
-     * magic-context 压缩重建会把 thinking 标签错位：close 标签（`</thinking>`/` response` 等）
-     * 被孤立成 text 块。识别这种纯标签残留文本，避免污染消息正文。
-     */
-    private fun isStrayThinkingTag(text: String): Boolean {
-        val trimmed = text.trim()
-        return trimmed.isEmpty() ||
-            trimmed == "</thinking>" || trimmed == "<thinking>" ||
-            trimmed == "</reasoning>" || trimmed == "<reasoning>" ||
-            trimmed == "</thought>" || trimmed == "<thought>" ||
-            trimmed == " response" || trimmed == " thinking" ||
-            trimmed == "response"
-    }
 
-    /** 剥离 thinking 内容里残留的 thinking 标签（open/close，含 </think> 等变体）。 */
-    private fun stripThinkingTags(text: String): String {
-        var out = text
-        for (tag in listOf(
-            "<thinking>", "</thinking>", "<think>", "</think>",
-            "<reasoning>", "</reasoning>",
-            "<thought>", "</thought>",
-            "<analysis>", "</analysis>"
-        )) {
-            out = out.replace(tag, "")
-        }
-        return out
-    }
 
-    /**
-     * 复刻 magic-context 的 stripPersistedAssistantText（packages/plugin/src/hooks/magic-context/tag-content-primitives.ts）
-     * 标记清除规则，按序执行：
-     * 1) 开头规范 §N§ 前缀（一个或多个 + 尾随空格）
-     * 2) 全局完整 §N§ 对
-     * 3) malformed hybrid：§N">§ / §N">§N§ / §N">
-     * 4) dangling：§N + 单个 improvised closer（$、ҩ、° 等非 word/空格/§/句点字符）
-     * 5) 补充：magic-context 的 dangling 只吃掉一个 °，这里把 §N°° 的残余 ° 和孤立 °° 清掉
-     * 6) stray §
-     * 最后 trim。只用于 assistant 消息文本；user/tool 消息保留。
-     * § = U+00A7，° = U+00B0（用 \u 转义避免源码字面量字节歧义）。
-     */
-    private fun stripMagicContextMarks(text: String): String {
-        var out = text
-        // 1) 开头规范前缀：一个或多个 §N§ + 尾随空格
-        out = out.replace(Regex("^(\\u00A7\\d+\\u00A7\\s*)+"), "")
-        // 2) 全局完整对 §N§
-        out = out.replace(Regex("\\u00A7\\d+\\u00A7"), "")
-        // 3) malformed hybrid：§N">§ / §N">§N§ / §N">
-        out = out.replace(Regex("\\u00A7\\d+\">(?:\\u00A7(?:\\d+\\u00A7)?)?"), "")
-        // 4) dangling：§N + 单个 improvised closer（非 word/空格/§/句点；不碰 §5.1 小数引用）
-        out = out.replace(Regex("\\u00A7\\d+(?!\\.\\d)[^\\s\\u00A7\\w.]?"), "")
-        // 5) 补充：清残余的 °°（magic-context 只吃一个 °，模型 improvised 的 °° 闭合符会残留）
-        out = out.replace(Regex("\\u00B0{2,}"), "")
-        out = out.replace(Regex("^\\s*\\u00B0+"), "")
-        // 6) stray §
-        out = out.replace(Regex("\\u00A7"), "")
-        return out.trim()
-    }
 
     private fun JsonObject.str(key: String): String {
         return if (has(key) && !get(key).isJsonNull) get(key).asString else ""
@@ -1875,45 +1385,64 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         ApplicationManager.getApplication().invokeLater { fn() }
     }
 
+    /**
+     * 给 RPC future 补异常日志：此前 thenAccept 链异常时无声丢失（表现为"点了没反应"）。
+     * 返回原 future，可直接链 thenAccept。
+     */
+    private fun <T> java.util.concurrent.CompletableFuture<T>.logFailure(op: String): java.util.concurrent.CompletableFuture<T> = also {
+        it.exceptionally { err ->
+            LOG.warn("[PiChatDiag] " + op + " 失败: " + err.message)
+            null
+        }
+    }
+
     // ================= PiListener（RPC 线程 → EDT） =================
 
     override fun onMessageUpdate(update: JsonObject) {
         if (!update.has("assistantMessageEvent") || !update.get("assistantMessageEvent").isJsonObject) return
         val ame = update.getAsJsonObject("assistantMessageEvent")
         val type = ame.str("type")
+        // delta 字段防御：pi 事件异常时缺 delta 或非字符串，丢弃本次增量而不是抛异常（会被 fire() 吞掉导致流式中断）
+        fun delta(): String? =
+            ame.get("delta")?.takeIf { it.isJsonPrimitive && it.asString.isNotEmpty() }?.asString
         when (type) {
             "text_start", "thinking_start" -> ensureStreamingAssistant()
             "text_delta" -> {
                 ensureStreamingAssistant()
-                if (ame.has("delta")) {
-                    onEdt {
-                        streamingText.value += ame.get("delta").asString
-                        publishWebState()
-                    }
+                val d = delta() ?: return
+                onEdt {
+                    streamingText += d
+                    publishWebState()
                 }
             }
             "thinking_delta" -> {
                 ensureStreamingAssistant()
-                if (ame.has("delta")) {
-                    onEdt {
-                        streamingThinking.value += ame.get("delta").asString
-                        publishWebState()
-                    }
+                val d = delta() ?: return
+                onEdt {
+                    streamingThinking += d
+                    publishWebState()
                 }
             }
         }
     }
 
+    /**
+     * 确保流式占位消息存在。
+     * 判断与创建必须都在 EDT 内完成：RPC 读线程连续收到两个 delta 时，
+     * 若在 EDT 外先判断再 onEdt 占位，第二个 delta 会重复创建占位消息（出现两个“正在回复”气泡）。
+     */
     private fun ensureStreamingAssistant() {
         if (streamingAssistant != null) return
-        val sa = ChatMessage.assistant()
-        streamingAssistant = sa
         onEdt {
+            // 双重检查：第一次占位的 onEdt 执行前，后续 delta 调用可能已进入此 lambda
+            if (streamingAssistant != null) return@onEdt
+            val sa = ChatMessage.assistant()
+            streamingAssistant = sa
             // 占位：流式消息按事件顺序插入 messages，保证后续工具消息排在其后
             messages.add(sa)
-            isStreamingMsg.value = true
-            streamingText.value = ""
-            streamingThinking.value = ""
+            isStreamingMsg = true
+            streamingText = ""
+            streamingThinking = ""
             publishWebState()
         }
     }
@@ -1960,17 +1489,17 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private fun findToolMessage(toolCallId: String): ChatMessage? {
         for (i in messages.indices.reversed()) {
             val m = messages[i]
-            if (m.kind == ChatMessage.Kind.TOOL && toolCallId != null && toolCallId == m.toolCallId) return m
+            if (m.kind == ChatMessage.Kind.TOOL && toolCallId == m.toolCallId) return m
         }
         return null
     }
 
     override fun onAgentStart() {
-        streaming = true
+        streaming.set(true)
         onEdt {
-            busy.value = true
+            busy = true
             // 保留统计尾部，不被纯 working 覆盖；随后异步刷新最新统计
-            statusText.value = "● 正在回复…$statsTail$planTail$balanceTail"
+            statusText = "● 正在回复…$statsTail$planTail$balanceTail"
             publishWebState()
             loadSessionStats()
         }
@@ -2007,8 +1536,8 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             sa.setText(stripMagicContextMarks(full.first))
             sa.setThinking(stripMagicContextMarks(full.second))
         } else {
-            val t = streamingText.value
-            val th = streamingThinking.value
+            val t = streamingText
+            val th = streamingThinking
             if (t.isNotEmpty()) sa.appendText(stripMagicContextMarks(t))
             if (th.isNotEmpty()) sa.appendThinking(stripMagicContextMarks(th))
         }
@@ -2019,9 +1548,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             messages.add(sa)
         }
         streamingAssistant = null
-        isStreamingMsg.value = false
-        streamingText.value = ""
-        streamingThinking.value = ""
+        isStreamingMsg = false
+        streamingText = ""
+        streamingThinking = ""
         // 落定后立即刷新 UI（否则要等到下一个事件才推送，前端会短暂停留在流式状态）
         publishWebState()
     }
@@ -2053,9 +1582,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     override fun onAgentSettled() {
-        streaming = false
+        streaming.set(false)
         onEdt {
-            busy.value = false
+            busy = false
             refreshStatus()
             publishWebState()
             // 通知前端 agent 回合真正完成（followUp 排队消息 drain 的可靠信号）
@@ -2068,9 +1597,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         val followUp = if (queue.has("followUp") && queue.get("followUp").isJsonArray) queue.getAsJsonArray("followUp").size() else 0
         val total = steering + followUp
         onEdt {
-            queueCount.value = total
-            statusText.value = when {
-                busy.value -> "● 正在回复…$statsTail$planTail$balanceTail"
+            queueCount = total
+            statusText = when {
+                busy -> "● 正在回复…$statsTail$planTail$balanceTail"
                 total > 0 -> "● 队列:$total$statsTail$planTail$balanceTail"
                 else -> "● 已连接$statsTail$planTail$balanceTail"
             }
@@ -2099,22 +1628,17 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     else -> NotificationType.INFORMATION
                 }
                 if (type != NotificationType.INFORMATION && text.isNotBlank()) {
-                    var group = NotificationGroupManager.getInstance().getNotificationGroup("Pi Chat")
-                    if (group == null) {
-                        group = NotificationGroup("Pi Chat", NotificationDisplayType.BALLOON, true)
-                    }
-                    group.createNotification(text.take(500), type).notify(project)
+                    // plugin.xml 已注册 notificationGroup（id="Pi Chat"），直接取；不再用废弃的构造器兜底
+                    NotificationGroupManager.getInstance()
+                        .getNotificationGroup("Pi Chat")
+                        .createNotification(text.take(500), type)
+                        .notify(project)
                 }
             }
             "select" -> forwardExtensionDialog(req)
             "confirm" -> forwardExtensionDialog(req)
             "input" -> forwardExtensionDialog(req)
             "editor" -> forwardExtensionDialog(req)
-            "set_editor_text" -> {
-                if (req.raw().has("text") && !req.raw().get("text").isJsonNull) {
-                    inputText.value = TextFieldValue(req.raw().get("text").asString)
-                }
-            }
             "setStatus" -> handleSetStatus(req)
             else -> {
                 // setStatus / setWidget / setTitle 及未知请求：第一版忽略
@@ -2151,9 +1675,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
             }
             else -> return
         }
-        statusText.value = when {
-            busy.value -> "● 正在回复…$statsTail$planTail$balanceTail"
-            queueCount.value > 0 -> "● 队列:${queueCount.value}$statsTail$planTail$balanceTail"
+        statusText = when {
+            busy -> "● 正在回复…$statsTail$planTail$balanceTail"
+            queueCount > 0 -> "● 队列:${queueCount}$statsTail$planTail$balanceTail"
             else -> "● 已连接$statsTail$planTail$balanceTail"
         }
         publishWebState()
@@ -2319,9 +1843,9 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     override fun onProcessExit(exitCode: Int, stderrTail: String?) {
         onEdt {
-            connected.value = false
-            statusText.value = "✗ 已断开"
-            busy.value = false
+            connected = false
+            statusText = "✗ 已断开"
+            busy = false
             if (!client.isRunning()) {
                 val tail = stderrTail?.take(800)
                 messages.add(
@@ -2354,641 +1878,15 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     private fun cancelExtension(req: ExtensionUiRequest) {
-        extensionDialog.value = null
         client.respondExtensionUi(req.id()) { o -> o.addProperty("cancelled", true) }
         publishWebState()
     }
 
     private fun completeExtension(req: ExtensionUiRequest, value: String? = null, confirmed: Boolean? = null) {
-        extensionDialog.value = null
         client.respondExtensionUi(req.id()) { o ->
             if (value != null) o.addProperty("value", value)
             if (confirmed != null) o.addProperty("confirmed", confirmed)
         }
         publishWebState()
     }
-
-    // ================= Compose UI =================
-
-    @Composable
-    fun Content() {
-        val dark = isDarkTheme()
-        Column(Modifier.fillMaxSize().background(if (dark) Color(0x24272F) else Color(0xF7F8FA))) {
-            TopBar(dark)
-            MessagesArea(Modifier.weight(1f), dark)
-            InputArea(dark)
-        }
-        PickerDialogs(dark)
-        NewSessionDialog(dark)
-        ExtensionDialogOverlay(dark)
-    }
-
-    @Composable
-    private fun isDarkTheme(): Boolean {
-        val manager = com.intellij.util.ui.UIUtil.isUnderDarcula()
-        return remember(manager) { manager }
-    }
-
-    // ---------------- 顶部栏 ----------------
-
-    @Composable
-    private fun TopBar(dark: Boolean) {
-        val fg = if (dark) Color(0xE6EAF0) else Color(0x24292E)
-        val sub = if (dark) Color(0x9AA3B2) else Color(0x6E7781)
-        val border = if (dark) Color(0x3C414B) else Color(0xE0E3E8)
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(if (dark) Color(0x292C34) else Color(0xFFFFFF))
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(if (dark) Color(0x315C9EEA) else Color(0xDCEBFF)), contentAlignment = Alignment.Center) {
-                    Text("π", color = if (dark) Color(0x75C7FF) else Color(0x236DCE), style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold))
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Pi Chat", color = fg, style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val dotColor = when {
-                            !connected.value -> Color(0xEF6A6A)
-                            busy.value -> Color(0xF0A64B)
-                            else -> Color(0x55D5AD)
-                        }
-                        Box(Modifier.size(6.dp).clip(CircleShape).background(dotColor))
-                        Spacer(Modifier.width(5.dp))
-                        Text(statusText.value.removePrefix("● "), color = sub, style = TextStyle(fontSize = 11.sp), maxLines = 1)
-                    }
-                }
-                HeaderAction("⋯", dark) { showSessionPicker.value = true }
-                Spacer(Modifier.width(4.dp))
-                HeaderAction("＋", dark) { newSession() }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                PickerButton("模型", currentModel.value?.name ?: "选择模型", dark, Modifier.weight(1f)) { showModelPicker.value = true }
-                PickerButton("推理", currentThinking.value ?: "off", dark, Modifier.weight(0.72f)) { showThinkingPicker.value = true }
-                PickerButton("历史", "${sessions.size}", dark, Modifier.widthIn(min = 58.dp, max = 74.dp)) { showSessionPicker.value = true }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("上下文", color = sub, style = TextStyle(fontSize = 10.5.sp))
-                Spacer(Modifier.width(6.dp))
-                Text("${messages.count { it.kind != ChatMessage.Kind.SYSTEM }} 条消息", color = fg, style = TextStyle(fontSize = 10.5.sp, fontWeight = FontWeight.Medium))
-                Spacer(Modifier.width(8.dp))
-                Text("·", color = sub)
-                Spacer(Modifier.width(8.dp))
-                Text(currentSessionFile.value.substringAfterLast('\\').substringAfterLast('/').ifEmpty { "当前会话" }, color = sub, style = TextStyle(fontSize = 10.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        Divider(Orientation.Horizontal, color = border, thickness = 1.dp)
-    }
-
-    @Composable
-    private fun HeaderAction(label: String, dark: Boolean, onClick: () -> Unit) {
-        Box(Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-            Text(label, color = if (dark) Color(0xAAB4C2) else Color(0x6E7781), style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium))
-        }
-    }
-
-    @Composable
-    private fun PickerButton(label: String, value: String, dark: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-        val fg = if (dark) Color(0xE2E7EF) else Color(0x3C4043)
-        val border = if (dark) Color(0x454B57) else Color(0xD4D8DD)
-        val bg = if (dark) Color(0x30343D) else Color(0xFFFFFF)
-        Row(
-            modifier.clip(RoundedCornerShape(9.dp)).background(bg).border(1.dp, border, RoundedCornerShape(9.dp)).clickable(onClick = onClick).padding(horizontal = 9.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(label, color = if (dark) Color(0x8F9AAA) else Color(0x6E7781), style = TextStyle(fontSize = 10.sp))
-            Spacer(Modifier.width(4.dp))
-            Text(value, color = fg, style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            Spacer(Modifier.width(3.dp))
-            Text("⌄", color = border, style = TextStyle(fontSize = 11.sp))
-        }
-    }
-
-    // ---------------- 消息区 ----------------
-
-    @Composable
-    private fun MessagesArea(modifier: Modifier, dark: Boolean) {
-        val listState = rememberLazyListState()
-        val totalItems = messages.size + if (isStreamingMsg.value) 1 else 0
-        LaunchedEffect(totalItems, streamingText.value, streamingThinking.value, scrollRequest.value) {
-            if (totalItems > 0) {
-                val info = listState.layoutInfo
-                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-                val nearBottom = lastVisible >= totalItems - 2
-                if (scrollRequest.value > 0 || nearBottom || isStreamingMsg.value) {
-                    listState.scrollToItem(totalItems - 1)
-                }
-            }
-        }
-        LazyColumn(
-            state = listState,
-            modifier = modifier.fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            itemsIndexed(messages.toList()) { _, msg ->
-                MessageRow(msg, dark)
-            }
-            if (isStreamingMsg.value) {
-                item(key = "streaming") {
-                    StreamingRow(dark)
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun StreamingRow(dark: Boolean) {
-        val msg = ChatMessage.assistant().also {
-            it.appendThinking(streamingThinking.value)
-            it.appendText(streamingText.value)
-        }
-        AssistantBubble(dark, msg.text, msg.thinking)
-    }
-
-    @Composable
-    private fun MessageRow(msg: ChatMessage, dark: Boolean) {
-        when (msg.kind) {
-            ChatMessage.Kind.USER -> UserBubble(msg.text, dark)
-            ChatMessage.Kind.ASSISTANT -> AssistantBubble(dark, msg.text, msg.thinking)
-            ChatMessage.Kind.THINKING -> ThinkingBlock(msg.thinking, dark)
-            ChatMessage.Kind.TOOL -> ToolCard(msg, dark)
-            ChatMessage.Kind.SYSTEM -> SystemLine(msg.text, dark)
-            ChatMessage.Kind.ERROR -> ErrorLine(msg.text, dark)
-        }
-    }
-
-    @Composable
-    private fun UserBubble(text: String, dark: Boolean) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Column(
-                Modifier
-                    .widthIn(max = 680.dp)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 5.dp))
-                    .background(if (dark) Color(0x3A6AA5) else Color(0x4B8BF5))
-                    .padding(horizontal = 15.dp, vertical = 11.dp)
-            ) {
-                PlainTextContent(text, Color(0xFFFFFF))
-            }
-        }
-    }
-
-    @Composable
-    private fun AssistantBubble(dark: Boolean, text: String, thinking: String) {
-        Column(Modifier.fillMaxWidth()) {
-            if (thinking.isNotEmpty()) {
-                ThinkingBlock(thinking, dark)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                Column(
-                    Modifier
-                        .widthIn(max = 760.dp)
-                        .padding(horizontal = 2.dp, vertical = 2.dp)
-                ) {
-                    if (text.isNotEmpty()) {
-                        MarkdownContent(text, dark = dark)
-                    }
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun ThinkingBlock(thinking: String, dark: Boolean) {
-        var expanded by remember { mutableStateOf(false) }
-        val fg = if (dark) Color(0x8A93A5) else Color(0x6E7781)
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (dark) Color(0x2B2F38) else Color(0xF0F1F4))
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (expanded) "▾" else "▸", color = fg, style = TextStyle(fontSize = 11.sp))
-                Spacer(Modifier.width(6.dp))
-                Text("思考中…", color = fg, style = TextStyle(fontSize = 11.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
-            }
-            if (expanded) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    thinking,
-                    color = fg,
-                    fontFamily = FontFamily.Monospace,
-                    style = TextStyle(fontSize = 11.5.sp, lineHeight = 16.sp),
-                    maxLines = 30
-                )
-            }
-        }
-    }
-
-    @Composable
-    private fun ToolCard(msg: ChatMessage, dark: Boolean) {
-        var expanded by remember { mutableStateOf(false) }
-        val fg = if (dark) Color(0xC9CDD4) else Color(0x3C4043)
-        val sub = if (dark) Color(0x8A93A5) else Color(0x6E7781)
-        val statusColor = when (msg.toolStatus) {
-            "error" -> Color(0xE53935)
-            "done" -> if (dark) Color(0x66BB6A) else Color(0x43A047)
-            else -> Color(0xFB8C00)
-        }
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (dark) Color(0x2B2F38) else Color(0xF0F1F4))
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 12.dp, vertical = 9.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (expanded) "▾" else "▸", color = sub, style = TextStyle(fontSize = 11.sp))
-                Spacer(Modifier.width(6.dp))
-                Text("🛠 ${msg.toolName}", color = fg, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium))
-                Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(statusColor)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    when (msg.toolStatus) {
-                        "done" -> "完成"
-                        "error" -> "错误"
-                        else -> "运行中"
-                    },
-                    color = statusColor,
-                    style = TextStyle(fontSize = 11.sp)
-                )
-            }
-            if (expanded && (msg.toolResult.isNotEmpty() || msg.argsSummary.isNotEmpty())) {
-                Spacer(Modifier.height(6.dp))
-                if (msg.toolResult.isNotEmpty()) {
-                    SelectionContainer {
-                        Text(
-                            msg.toolResult,
-                            color = fg,
-                            fontFamily = FontFamily.Monospace,
-                            style = TextStyle(fontSize = 11.5.sp, lineHeight = 16.sp),
-                            maxLines = 40
-                        )
-                    }
-                } else if (msg.argsSummary.isNotEmpty()) {
-                    Text(
-                        msg.argsSummary,
-                        color = sub,
-                        fontFamily = FontFamily.Monospace,
-                        style = TextStyle(fontSize = 11.sp),
-                        maxLines = 20
-                    )
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun SystemLine(text: String, dark: Boolean) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            Text(
-                text,
-                color = if (dark) Color(0x8A93A5) else Color(0x9AA0A6),
-                style = TextStyle(fontSize = 11.5.sp),
-                maxLines = 3
-            )
-        }
-    }
-
-    @Composable
-    private fun ErrorLine(text: String, dark: Boolean) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (dark) Color(0x4A2527) else Color(0xFDECEA))
-                    .padding(12.dp)
-            ) {
-                Text(
-                    text,
-                    color = Color(0xE53935),
-                    style = TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
-                )
-            }
-        }
-    }
-
-    // ---------------- 输入区 ----------------
-
-    @Composable
-    private fun InputArea(dark: Boolean) {
-        val bg = if (dark) Color(0x292C34) else Color(0xFFFFFF)
-        val composer = if (dark) Color(0x343840) else Color(0xF4F6F8)
-        val border = if (dark) Color(0x4A515D) else Color(0xD4D8DD)
-        val fg = if (dark) Color(0xE6EAF0) else Color(0x24292E)
-        val sub = if (dark) Color(0x8F99AA) else Color(0x6E7781)
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(bg)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(composer)
-                    .border(1.dp, border, RoundedCornerShape(18.dp))
-                    .padding(horizontal = 8.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                ComposerAction("＋", dark) { }
-                Spacer(Modifier.width(4.dp))
-                ComposerAction("⌁", dark) { }
-                Spacer(Modifier.width(5.dp))
-                TextField(
-                    value = inputText.value,
-                    onValueChange = { inputText.value = it },
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 38.dp, max = 130.dp)
-                        .onPreviewKeyEvent { ev ->
-                            if (ev.type == KeyEventType.KeyDown && ev.key == Key.Enter && !ev.isShiftPressed) {
-                                // Do not consume Enter while an IME composition is
-                                // active. Chinese/Japanese/Korean IMEs use Enter to
-                                // commit the current candidate; consuming it here
-                                // would send a half-composed message instead.
-                                if (inputText.value.composition == null) {
-                                    sendMessage()
-                                    true
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                        },
-                    placeholder = { Text("输入消息…", color = sub) },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { sendMessage() })
-                )
-                Spacer(Modifier.width(6.dp))
-                Box(
-                    Modifier.size(34.dp).clip(CircleShape)
-                        .background(if (busy.value) Color(0xC65E62) else Color(0x4B8BF5))
-                        .clickable { if (busy.value) abort() else sendMessage() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(if (busy.value) "■" else "↑", color = Color.White, style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold))
-                }
-            }
-            Spacer(Modifier.height(7.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("${currentModel.value?.name ?: "未选择模型"} · ${currentThinking.value ?: "off"}", color = sub, style = TextStyle(fontSize = 10.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.weight(1f))
-                Text(sendHint.value, color = sub, style = TextStyle(fontSize = 10.sp))
-            }
-        }
-        Divider(Orientation.Horizontal, color = border, thickness = 1.dp)
-    }
-
-    @Composable
-    private fun ComposerAction(label: String, dark: Boolean, onClick: () -> Unit) {
-        Box(Modifier.size(30.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-            Text(label, color = if (dark) Color(0xB8C0CC) else Color(0x6E7781), style = TextStyle(fontSize = 20.sp))
-        }
-    }
-
-    // ---------------- 选择器弹窗 ----------------
-
-    @Composable
-    private fun OptionPicker(
-        title: String,
-        options: List<Pair<String, Boolean>>,
-        onSelect: (String) -> Unit,
-        onDismiss: () -> Unit,
-        dark: Boolean
-    ) {
-        Dialog(onDismissRequest = onDismiss) {
-            val fg = if (dark) Color(0xC9CDD4) else Color(0x3C4043)
-            val bg = if (dark) Color(0x2B2D32) else Color(0xFFFFFF)
-            val hover = if (dark) Color(0x3A3D44) else Color(0xF0F2F5)
-            Column(
-                Modifier
-                    .widthIn(min = 260.dp, max = 420.dp)
-                    .background(bg, RoundedCornerShape(10.dp))
-                    .padding(8.dp)
-            ) {
-                Text(
-                    title,
-                    color = fg,
-                    style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                )
-                if (options.isEmpty()) {
-                    Text("（无可用选项）", color = if (dark) Color(0x8A93A5) else Color(0x9AA0A6), modifier = Modifier.padding(8.dp))
-                }
-                LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    itemsIndexed(options) { _, (text, selected) ->
-                        val interaction = remember { MutableInteractionSource() }
-                        val hovered by interaction.collectIsHoveredAsState()
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (hovered) hover else bg)
-                                .clickable(interactionSource = interaction, indication = null) { onSelect(text) }
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text,
-                                color = fg,
-                                style = TextStyle(fontSize = 12.5.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
-                                maxLines = 1
-                            )
-                            Spacer(Modifier.weight(1f))
-                            if (selected) Text("✓", color = if (dark) Color(0x8A9BFF) else Color(0x4B8BF5))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun NewSessionDialog(dark: Boolean) {
-        if (!showNewSessionDialog.value) return
-        val fg = if (dark) Color(0xE6E8ED) else Color(0x24292E)
-        val sub = if (dark) Color(0x9AA3B2) else Color(0x6E7781)
-        val bg = if (dark) Color(0x2B2D32) else Color(0xFFFFFF)
-        Dialog(onDismissRequest = { showNewSessionDialog.value = false }) {
-            Column(
-                Modifier
-                    .widthIn(min = 320.dp, max = 480.dp)
-                    .background(bg, RoundedCornerShape(10.dp))
-                    .padding(16.dp)
-            ) {
-                Text("新建会话", color = fg, style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold))
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "新建会话将清空当前聊天，并开始一个全新的 pi 会话（终端里也可继续使用）。",
-                    color = sub,
-                    style = TextStyle(fontSize = 12.5.sp, lineHeight = 18.sp)
-                )
-                Spacer(Modifier.height(14.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    org.jetbrains.jewel.ui.component.OutlinedSlimButton(onClick = { showNewSessionDialog.value = false }) {
-                        Text("取消")
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    org.jetbrains.jewel.ui.component.DefaultButton(onClick = { confirmNewSession() }) {
-                        Text("新建")
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Extension UI is rendered inside the Tool Window instead of using
-     * JOptionPane. This keeps focus, theme and IME handling in the same Compose
-     * surface as the chat input.
-     */
-    @Composable
-    private fun ExtensionDialogOverlay(dark: Boolean) {
-        val state = extensionDialog.value ?: return
-        val req = state.request
-        val fg = if (dark) Color(0xE6E8ED) else Color(0x24292E)
-        val sub = if (dark) Color(0x9AA3B2) else Color(0x6E7781)
-        val bg = if (dark) Color(0x2B2D32) else Color(0xFFFFFF)
-
-        Dialog(onDismissRequest = { cancelExtension(req) }) {
-            Column(
-                Modifier
-                    .widthIn(min = 320.dp, max = 560.dp)
-                    .background(bg, RoundedCornerShape(10.dp))
-                    .padding(16.dp)
-            ) {
-                Text(
-                    req.title().ifEmpty { "pi 请求输入" },
-                    color = fg,
-                    style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                )
-                if (req.message().isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(req.message(), color = sub, style = TextStyle(fontSize = 12.5.sp, lineHeight = 18.sp))
-                }
-                Spacer(Modifier.height(12.dp))
-
-                when (req.method()) {
-                    "select" -> {
-                        val options = req.options()
-                        if (options.isEmpty()) {
-                            Text("（无可用选项）", color = sub, style = TextStyle(fontSize = 12.sp))
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                options.forEach { option ->
-                                    org.jetbrains.jewel.ui.component.OutlinedSlimButton(
-                                        onClick = { completeExtension(req, value = option) },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(option, maxLines = 1)
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            org.jetbrains.jewel.ui.component.OutlinedSlimButton(onClick = { cancelExtension(req) }) {
-                                Text("取消")
-                            }
-                        }
-                    }
-                    "confirm" -> {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            org.jetbrains.jewel.ui.component.OutlinedSlimButton(onClick = { cancelExtension(req) }) {
-                                Text("取消")
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            org.jetbrains.jewel.ui.component.OutlinedSlimButton(onClick = { completeExtension(req, confirmed = false) }) {
-                                Text("否")
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            org.jetbrains.jewel.ui.component.DefaultButton(onClick = { completeExtension(req, confirmed = true) }) {
-                                Text("是")
-                            }
-                        }
-                    }
-                    "input", "editor" -> {
-                        var input by remember(req.id()) {
-                            mutableStateOf(TextFieldValue(if (req.method() == "editor") req.prefill() else ""))
-                        }
-                        TextField(
-                            value = input,
-                            onValueChange = { input = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 40.dp, max = if (req.method() == "editor") 260.dp else 120.dp),
-                            placeholder = {
-                                if (req.placeholder().isNotEmpty()) Text(req.placeholder(), color = sub)
-                            }
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            org.jetbrains.jewel.ui.component.OutlinedSlimButton(onClick = { cancelExtension(req) }) {
-                                Text("取消")
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            org.jetbrains.jewel.ui.component.DefaultButton(onClick = { completeExtension(req, value = input.text) }) {
-                                Text("确定")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @Composable
-    fun PickerDialogs(dark: Boolean) {
-        if (showModelPicker.value) {
-            OptionPicker(
-                "选择模型",
-                models.map { it.name to (it == currentModel.value) },
-                onSelect = { name -> models.firstOrNull { it.name == name }?.let { selectModel(it) } },
-                onDismiss = { showModelPicker.value = false },
-                dark
-            )
-        }
-        if (showThinkingPicker.value) {
-            OptionPicker(
-                "选择思考强度",
-                thinkingLevels.map { it to (it == currentThinking.value) },
-                onSelect = { selectThinking(it) },
-                onDismiss = { showThinkingPicker.value = false },
-                dark
-            )
-        }
-        if (showSessionPicker.value) {
-            OptionPicker(
-                "选择会话",
-                sessions.map { (if (it.isCurrent) "✓ " else "") + it.name to it.isCurrent },
-                onSelect = { name -> sessions.firstOrNull { s -> (if (s.isCurrent) "✓ " else "") + s.name == name }?.let { selectSession(it) } },
-                onDismiss = { showSessionPicker.value = false },
-                dark
-            )
-        }
-    }
-}
-
-/** 从会话文件名解析 pi 的 UUID id（形如 2026-08-21T19-24-10-173Z_01a025c7-...jsonl → 01a025c7-...）。 */
-private fun parseSessionId(name: String): String {
-    val m = Regex("_([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\.jsonl$").find(name)
-    return m?.groupValues?.get(1) ?: name.removeSuffix(".jsonl")
 }

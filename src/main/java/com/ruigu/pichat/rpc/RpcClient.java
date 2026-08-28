@@ -137,6 +137,30 @@ public class RpcClient {
         failAllPending();
     }
 
+    /**
+     * 异步关闭：与 {@link #close()} 语义一致，但 destroy/waitFor 不阻塞调用线程。
+     * EDT 上切换会话时用这个——close() 的 waitFor(2s) 会冻结工具窗口 UI。
+     */
+    public void closeAsync() {
+        closing = true;
+        running = false;
+        failAllPending();
+        // 立即关 writer 使读循环退出；进程销毁移到后台线程
+        PrintWriter w = writer;
+        if (w != null) {
+            try { w.close(); } catch (Exception ignored) {}
+        }
+        Thread t = new Thread(() -> {
+            Process p = process;
+            if (p != null && p.isAlive()) {
+                try { p.destroy(); } catch (Exception ignored) {}
+                try { if (!p.waitFor(2, TimeUnit.SECONDS)) p.destroyForcibly(); } catch (Exception ignored) {}
+            }
+        }, "pi-rpc-close");
+        t.setDaemon(true);
+        t.start();
+    }
+
     public boolean isRunning() {
         return running && process != null && process.isAlive();
     }
@@ -156,8 +180,11 @@ public class RpcClient {
                 try {
                     JsonObject event = JsonParser.parseString(line).getAsJsonObject();
                     dispatch(event);
-                } catch (Exception ignored) {
-                    // 跳过无法解析的行
+                } catch (Exception e) {
+                    // 跳过无法解析的行，但记录首段便于定位（pi 偶发输出非 JSON 行）
+                    if (LOG.isDebugEnabled()) {
+                        LOG.warn("[PiChatDiag] 无法解析 pi 输出行: " + line.substring(0, Math.min(line.length(), 200)), e);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -220,7 +247,8 @@ public class RpcClient {
             case "message_update" -> fire(l -> l.onMessageUpdate(e));
             case "message_end" -> fire(l -> l.onMessageEnd(e));
             case "tool_execution_start" -> fire(l -> l.onToolStart(
-                    str(e, "toolCallId"), str(e, "toolName"),
+                    // Kotlin 侧 onToolStart 参数声明非空，字段缺失时给空串避免 NPE 被吞掉导致工具卡不显示
+                    strOrEmpty(e, "toolCallId"), strOrEmpty(e, "toolName"),
                     e.has("args") && e.get("args").isJsonObject() ? e.getAsJsonObject("args") : null));
             case "tool_execution_update" -> fire(l -> l.onToolUpdate(
                     str(e, "toolCallId"), str(e, "toolName"),
@@ -247,6 +275,12 @@ public class RpcClient {
         return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : null;
     }
 
+    /** str 的非空变体：字段缺失/为 null 时返回空串（Kotlin 非空参数安全）。 */
+    private static String strOrEmpty(JsonObject o, String key) {
+        String v = str(o, key);
+        return v == null ? "" : v;
+    }
+
     private static int intOr(JsonObject o, String key) {
         return o.has(key) && o.get(key).isJsonPrimitive() && o.get(key).getAsJsonPrimitive().isNumber()
                 ? o.get(key).getAsInt() : 0;
@@ -256,8 +290,9 @@ public class RpcClient {
         for (PiListener l : listeners) {
             try {
                 fn.accept(l);
-            } catch (Exception ignored) {
-                // 单个监听器异常不影响分发
+            } catch (Exception e) {
+                // 单个监听器异常不影响分发，但必须留痕（否则表现为“事件丢失”无从排查）
+                LOG.warn("[PiChatDiag] listener threw: " + e, e);
             }
         }
     }

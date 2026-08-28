@@ -1,16 +1,11 @@
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.4.0"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.0"
     id("org.jetbrains.intellij.platform") version "2.18.1"
 }
 
 repositories {
-    google()
     mavenCentral()
-    // Compose Multiplatform publishes the desktop runtime and its AndroidX
-    // desktop transitive dependencies here.
-    maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     intellijPlatform {
         defaultRepositories()
     }
@@ -25,12 +20,6 @@ val intellijPlatformVersion = providers.gradleProperty("intellijPlatformVersion"
 // ./gradlew runIde -PlocalIdePath="D:\\Program Files\\Jetbrains\\Programs\\IntelliJ IDEA Ultimate"
 val localIdePath = providers.gradleProperty("localIdePath")
 
-// Jewel 0.38+ is built and published as an IntelliJ Platform artifact. Keep
-// this aligned with the exact IntelliJ build selected above. It can be
-// overridden with -PjewelArtifactVersion when targeting another build.
-val jewelArtifactVersion = providers.gradleProperty("jewelArtifactVersion")
-    .orElse("262.8665.258")
-
 dependencies {
     intellijPlatform {
         // 从 JetBrains 仓库解析平台，不依赖开发机上的 IntelliJ 安装路径
@@ -44,28 +33,6 @@ dependencies {
         // JCEF is bundled with supported IntelliJ distributions, but it is an
         // optional platform module and must be present on the compile classpath.
         bundledPlugin("com.intellij.modules.jcef")
-    }
-
-    // Package Jewel/Compose/Skiko with the plugin instead of declaring
-    // intellij.libraries.skiko as a host-IDE plugin dependency. This keeps
-    // the plugin loadable in an unlicensed Community/unified IDE.
-    implementation("com.jetbrains.intellij.platform:jewel-ide-laf-bridge:${jewelArtifactVersion.get()}") {
-        // These are supplied by the IntelliJ host and must not be copied into
-        // the plugin (otherwise the distribution grows by hundreds of MB and
-        // duplicates platform classes).
-        exclude(group = "com.jetbrains.intellij.platform")
-        exclude(group = "org.jetbrains.intellij.deps.kotlinx")
-        // IntelliJ ships these classes from the parent classloader. Keeping a
-        // second copy in the plugin causes loader-constraint violations in
-        // SwingBridgeReader (notably for kotlinx.coroutines.flow.Flow).
-        exclude(group = "org.jetbrains.kotlinx")
-        exclude(group = "org.jetbrains.kotlin")
-    }
-
-    // Compose's snapshot invalidation uses AtomicFU; unlike coroutines, this
-    // class is not shipped by the IntelliJ host and must remain in the plugin.
-    implementation("org.jetbrains.kotlinx:atomicfu-jvm:0.28.0") {
-        exclude(group = "org.jetbrains.kotlin")
     }
 }
 

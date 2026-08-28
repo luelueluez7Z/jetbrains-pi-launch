@@ -36,7 +36,10 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   const [currentPermissionRequest, setCurrentPermissionRequest] = useState<PermissionRequest | null>(null);
   const permissionDialogOpenRef = useRef(false);
   const currentPermissionRequestRef = useRef<PermissionRequest | null>(null);
-  const pendingPermissionRequestsRef = useRef<PermissionRequest[]>([]);
+  // 队列上限：后端事件风暴时防止 pending 列表无限增长（旧请求早已超时，弹也无意义）
+const MAX_PENDING_DIALOGS = 50;
+
+const pendingPermissionRequestsRef = useRef<PermissionRequest[]>([]);
 
   // AskUserQuestion dialog state
   const [askUserQuestionDialogOpen, setAskUserQuestionDialogOpen] = useState(false);
@@ -66,6 +69,14 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
         (item) => item.channelId === request.channelId
       );
       if (request.channelId !== currentId && !alreadyQueued) {
+        // 队列上限：后端异常风暴时防止无限增长（旧请求早已超时无意义）
+        if (pendingPermissionRequestsRef.current.length >= MAX_PENDING_DIALOGS) {
+          console.warn(
+            `[useDialogManagement] permission 队列已满(${MAX_PENDING_DIALOGS})，丢弃新请求:`,
+            request.channelId
+          );
+          return;
+        }
         pendingPermissionRequestsRef.current.push(request);
       }
       return;
@@ -87,6 +98,14 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
         (item) => item.requestId === request.requestId
       );
       if (request.requestId !== currentId && !alreadyQueued) {
+        // 队列上限：同上，防止异常场景下无限堆积
+        if (pendingAskUserQuestionRequestsRef.current.length >= MAX_PENDING_DIALOGS) {
+          console.warn(
+            `[useDialogManagement] askUserQuestion 队列已满(${MAX_PENDING_DIALOGS})，丢弃新请求:`,
+            request.requestId
+          );
+          return;
+        }
         pendingAskUserQuestionRequestsRef.current.push(request);
       }
       return;

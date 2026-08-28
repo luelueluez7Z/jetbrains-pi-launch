@@ -44,7 +44,6 @@ describe('useWindowCallbacks integration', () => {
     setSelectedPiModel: vi.fn(),
     setPiThinkingLevels: vi.fn(),
     setReasoningEffort: vi.fn(),
-    setActiveProviderConfig: vi.fn(),
     setStreamingEnabledSetting: vi.fn(),
     setSendShortcut: vi.fn(),
     setAutoOpenFileEnabled: vi.fn(),

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap } from '../types';
 import { sendBridgeEvent } from '../utils/bridge';
@@ -167,6 +167,16 @@ export function useSessionManagement({
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
   }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSubagentHistories]);
+
+  // 卸载时清理 transition 安全超时定时器，避免泄漏与卸载后误改全局状态
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current !== null) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Create new session
   const createNewSession = useCallback(() => {

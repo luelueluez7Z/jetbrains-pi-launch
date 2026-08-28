@@ -7,7 +7,6 @@ import type {
   ReasoningEffort,
   SelectedAgent,
 } from '../components/ChatInputBox/types';
-import type { ProviderConfig } from '../types/provider';
 import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
 import { registerWindowCallbacks } from './windowCallbacks/registerCallbacks';
@@ -45,7 +44,6 @@ export interface UseWindowCallbacksOptions {
   setSelectedPiModel: React.Dispatch<React.SetStateAction<string>>;
   setReasoningEffort: React.Dispatch<React.SetStateAction<ReasoningEffort>>;
   setPiThinkingLevels: React.Dispatch<React.SetStateAction<ReasoningEffort[]>>;
-  setActiveProviderConfig: React.Dispatch<React.SetStateAction<ProviderConfig | null>>;
   setStreamingEnabledSetting: React.Dispatch<React.SetStateAction<boolean>>;
   setSendShortcut: React.Dispatch<React.SetStateAction<'enter' | 'cmdEnter'>>;
   setAutoOpenFileEnabled: React.Dispatch<React.SetStateAction<boolean>>;
