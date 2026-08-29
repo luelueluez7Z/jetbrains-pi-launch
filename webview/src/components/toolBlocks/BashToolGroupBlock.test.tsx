@@ -1,11 +1,16 @@
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import BashToolGroupBlock from './BashToolGroupBlock';
+import { copyToClipboard } from '../../utils/copyUtils';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
   }),
+}));
+
+vi.mock('../../utils/copyUtils', () => ({
+  copyToClipboard: vi.fn(async () => true),
 }));
 
 describe('BashToolGroupBlock', () => {
@@ -72,5 +77,20 @@ describe('BashToolGroupBlock', () => {
     const outputText = container.querySelector('.bash-output-text');
     expect(outputText).toBeTruthy();
     expect(outputText?.textContent).toBe('stdout line 1\nstdout line 2');
+  });
+
+  it('copies the selected batch command from its context menu', () => {
+    const { container } = render(
+      <BashToolGroupBlock
+        items={[{ toolId: 'bash-1', input: { command: 'npm test' } }]}
+      />,
+    );
+
+    fireEvent.click(container.querySelector('.bash-timeline-content') as HTMLElement);
+    fireEvent.contextMenu(container.querySelector('.bash-command-block') as HTMLElement);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'contextMenu.copyCommand' }));
+
+    expect(copyToClipboard).toHaveBeenCalledWith('npm test');
   });
 });

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ToolInput, ToolResultBlock } from '../../types';
 import { useIsToolDenied } from '../../hooks/useIsToolDenied';
 import { stripAnsi } from '../../utils/stripAnsi';
+import { CommandCopyContextMenu } from './CommandCopyContextMenu';
 
 const TASK_DETAILS_STYLE: React.CSSProperties = { padding: 0, border: 'none' };
 const TASK_CONTENT_WRAPPER_STYLE: React.CSSProperties = { paddingLeft: '40px', position: 'relative', zIndex: 1 };
@@ -67,7 +68,9 @@ const BashToolBlock = memo(function BashToolBlock({ input, result, toolId }: Bas
           <div className="bash-tool-content">
             <div className="bash-tool-line" />
             <div className="task-content-wrapper" style={TASK_CONTENT_WRAPPER_STYLE}>
-              <div className="bash-command-block">{command}</div>
+              <CommandCopyContextMenu command={command}>
+                {command}
+              </CommandCopyContextMenu>
 
               {output && (
                 <div className={`bash-output-block ${isError ? 'error' : 'normal'}`}>

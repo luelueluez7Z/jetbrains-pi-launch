@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ToolInput, ToolResultBlock } from '../../types';
 import { stripAnsi } from '../../utils/stripAnsi';
+import { CommandCopyContextMenu } from './CommandCopyContextMenu';
 
 interface BashItem {
   command: string;
@@ -229,7 +230,9 @@ const BashToolGroupBlock = ({ items, deniedToolIds }: BashToolGroupBlockProps) =
                   {/* Expanded detail */}
                   {isItemExpanded && (
                     <div className="bash-timeline-detail">
-                      <div className="bash-command-block">{item.command}</div>
+                      <CommandCopyContextMenu command={item.command}>
+                        {item.command}
+                      </CommandCopyContextMenu>
                       {item.output && (
                         <div className={`bash-output-block ${item.isError ? 'error' : 'normal'}`}>
                           {item.isError && (

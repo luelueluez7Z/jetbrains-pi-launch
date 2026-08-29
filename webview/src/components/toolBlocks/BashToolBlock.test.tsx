@@ -1,6 +1,7 @@
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import BashToolBlock from './BashToolBlock';
+import { copyToClipboard } from '../../utils/copyUtils';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -10,6 +11,10 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('../../hooks/useIsToolDenied', () => ({
   useIsToolDenied: () => false,
+}));
+
+vi.mock('../../utils/copyUtils', () => ({
+  copyToClipboard: vi.fn(async () => true),
 }));
 
 describe('BashToolBlock', () => {
@@ -42,5 +47,16 @@ describe('BashToolBlock', () => {
 
     expect(container.querySelector('.bash-command-block')?.textContent).toBe('node --version');
     expect(container.querySelector('.bash-output-text')?.textContent).toBe('v22.0.0');
+  });
+
+  it('copies the full command from its context menu', () => {
+    const { container } = render(<BashToolBlock input={{ command: 'node --version' }} />);
+
+    fireEvent.click(container.querySelector('.bash-tool-header') as HTMLElement);
+    fireEvent.contextMenu(container.querySelector('.bash-command-block') as HTMLElement);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'contextMenu.copyCommand' }));
+
+    expect(copyToClipboard).toHaveBeenCalledWith('node --version');
   });
 });

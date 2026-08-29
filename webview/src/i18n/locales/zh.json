@@ -177,6 +177,7 @@
   },
   "contextMenu": {
     "copy": "复制",
+    "copyCommand": "复制命令",
     "quote": "引用"
   },
   "tools": {

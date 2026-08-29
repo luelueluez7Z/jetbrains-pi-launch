@@ -161,6 +161,19 @@ const App = () => {
     };
   }, []);
 
+  // Suppress JCEF's native context menu for every Webview display area. The
+  // capture listener runs before child handlers that may stop propagation,
+  // while leaving propagation intact so custom application menus still open.
+  useEffect(() => {
+    const preventNativeContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+    document.addEventListener('contextmenu', preventNativeContextMenu, true);
+    return () => {
+      document.removeEventListener('contextmenu', preventNativeContextMenu, true);
+    };
+  }, []);
+
   // ── Close in-conversation search panel when navigating away from chat ──
   // ── Slash command preloading ──
   useEffect(() => {
