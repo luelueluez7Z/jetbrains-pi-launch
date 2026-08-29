@@ -161,16 +161,16 @@ const App = () => {
     };
   }, []);
 
-  // Suppress JCEF's native context menu for every Webview display area. The
-  // capture listener runs before child handlers that may stop propagation,
-  // while leaving propagation intact so custom application menus still open.
+  // Suppress JCEF's native context menu for every Webview display area. Use
+  // bubbling so React child handlers can open custom menus before the fallback
+  // suppression runs; do not stop propagation here.
   useEffect(() => {
     const preventNativeContextMenu = (event: MouseEvent) => {
       event.preventDefault();
     };
-    document.addEventListener('contextmenu', preventNativeContextMenu, true);
+    document.addEventListener('contextmenu', preventNativeContextMenu);
     return () => {
-      document.removeEventListener('contextmenu', preventNativeContextMenu, true);
+      document.removeEventListener('contextmenu', preventNativeContextMenu);
     };
   }, []);
 
