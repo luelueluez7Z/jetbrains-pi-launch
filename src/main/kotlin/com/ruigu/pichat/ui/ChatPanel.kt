@@ -53,7 +53,6 @@ import java.time.Instant
 import java.util.Comparator
 import java.util.IdentityHashMap
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
 import java.awt.BorderLayout
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -75,9 +74,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private lateinit var client: RpcClient
     /** 单会话模式：同时只保留一个 pi 进程（与终端 pi 一致），切换会话即重启进程 */
     private val pendingSessionSwitch = IdentityHashMap<RpcClient, String>()
-
-    /** 流式进行中标记：RPC 读线程写（onAgentStart/onAgentSettled）、EDT 读（sendMessage 决定 steer/followUp），需要原子可见。 */
-    private val streaming = AtomicBoolean(false)
 
     /** 当前流式占位消息：RPC 读线程创建/判断、EDT 落定置空，需 volatile 保证跨线程可见。 */
     @Volatile
@@ -980,16 +976,11 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         LOG.info("[PiChatDiag] send: " + text.take(50))
         messages.add(ChatMessage.user(text))
         publishWebState()
-        if (streaming.get()) {
-            // 对话进行中：steer 打断引导；followUp 排队等待当前对话完成
-            if (behavior == "followUp") {
-                client.followUp(text, images)
-            } else {
-                client.promptSteer(text, images)
-            }
-        } else {
-            client.prompt(text, images)
-        }
+        // 不依赖 streaming 原子标记决定 RPC 类型：agent_start 事件与前端发送
+        // 存在竞态，统一使用 prompt + streamingBehavior 由 Pi 在空闲/流式状态下
+        // 分别处理，避免消息被错误延迟或被无 streamingBehavior 的 prompt 拒绝。
+        val normalizedBehavior = if (behavior == "followUp") "followUp" else "steer"
+        client.promptWithBehavior(text, images, normalizedBehavior)
     }
 
     /** 把前端 attachments（[{fileName, mediaType, data(base64)}]）转成 pi RPC images（[{type,data,mimeType}]）。 */
@@ -1611,7 +1602,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     override fun onAgentStart() {
-        streaming.set(true)
         onEdt {
             busy = true
             // 保留统计尾部，不被纯 working 覆盖；随后异步刷新最新统计
@@ -1698,7 +1688,6 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     }
 
     override fun onAgentSettled() {
-        streaming.set(false)
         onEdt {
             busy = false
             refreshStatus()

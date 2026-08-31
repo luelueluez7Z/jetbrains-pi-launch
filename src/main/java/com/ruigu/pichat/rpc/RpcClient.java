@@ -364,18 +364,32 @@ public class RpcClient {
         });
     }
 
+    /**
+     * 发送带流式行为的 prompt。
+     *
+     * Pi 在空闲时会忽略 streamingBehavior 并直接启动 prompt；流式时则按
+     * steer/followUp 入对应队列。因此调用方不需要依赖本地 loading 状态判断
+     * 当前进程是否已经进入 streaming，避免事件到达顺序造成竞态。
+     */
+    public CompletableFuture<RpcResponse> promptWithBehavior(
+            String message, List<JsonObject> images, String streamingBehavior) {
+        return send(cmd -> {
+            cmd.addProperty("type", "prompt");
+            cmd.addProperty("message", message);
+            if ("steer".equals(streamingBehavior) || "followUp".equals(streamingBehavior)) {
+                cmd.addProperty("streamingBehavior", streamingBehavior);
+            }
+            addImages(cmd, images);
+        });
+    }
+
     public CompletableFuture<RpcResponse> promptSteer(String message) {
         return promptSteer(message, null);
     }
 
-    /** prompt 打断引导 + 图片。 */
+    /** prompt steer 引导 + 图片。 */
     public CompletableFuture<RpcResponse> promptSteer(String message, List<JsonObject> images) {
-        return send(cmd -> {
-            cmd.addProperty("type", "prompt");
-            cmd.addProperty("message", message);
-            cmd.addProperty("streamingBehavior", "steer");
-            addImages(cmd, images);
-        });
+        return promptWithBehavior(message, images, "steer");
     }
 
     public CompletableFuture<RpcResponse> steer(String message) {

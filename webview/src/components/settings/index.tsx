@@ -39,8 +39,8 @@ const FONT_SCALE: Record<number, number> = { 1: 0.8, 2: 0.9, 3: 1.0, 4: 1.1, 5: 
 
 /** 流式发送键位选项（模型对话进行中时回车/Tab 的语义） */
 const SEND_BEHAVIOR_OPTIONS: { value: SendBehaviorMode; label: string; hint: string }[] = [
-  { value: 'steerOnEnter', label: '回车引导 / Tab 后续', hint: '回车打断并引导模型，Tab 排队等待当前对话完成（默认）' },
-  { value: 'followUpOnEnter', label: '回车后续 / Tab 引导', hint: '回车排队等待当前对话完成，Tab 打断并引导模型' },
+  { value: 'steerOnEnter', label: '回车引导 / Tab 后续', hint: '回车在当前工具回合边界注入引导，Tab 排队等待当前对话完成（默认）' },
+  { value: 'followUpOnEnter', label: '回车后续 / Tab 引导', hint: '回车排队等待当前对话完成，Tab 在当前工具回合边界注入引导' },
 ];
 
 function getInitialTheme(): string {

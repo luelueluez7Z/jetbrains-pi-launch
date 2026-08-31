@@ -328,6 +328,13 @@ const App = () => {
   useEffect(() => {
     if (streamingActive) streamingSeenRef.current = true;
   }, [streamingActive]);
+  // 会话切换后重新进入初始化阶段，不能沿用上一会话的流式观测结果。
+  const streamingSeenSessionRef = useRef(currentSessionId);
+  useEffect(() => {
+    if (streamingSeenSessionRef.current === currentSessionId) return;
+    streamingSeenSessionRef.current = currentSessionId;
+    streamingSeenRef.current = false;
+  }, [currentSessionId]);
   const prevLoadingRef = useRef(loading);
   useEffect(() => {
     const wasLoading = prevLoadingRef.current;
@@ -381,7 +388,8 @@ const App = () => {
       enqueueMessage(content, attachments);
       return;
     }
-    // 其余（非流式 或 steer 打断引导）直接发送
+    // steer 始终直接发送；后端会把 streamingBehavior 交给 Pi，避免前端
+    // loading/streamingActive 状态与 RPC 进程状态之间的竞态。
     hookHandleSubmit(content, attachments, behavior);
   }, [loading, streamingActive, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, setCurrentView, addToast, t]);
 

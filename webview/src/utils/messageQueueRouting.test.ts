@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { resolveMessageQueueRoute } from './messageQueueRouting';
 
 describe('resolveMessageQueueRoute', () => {
-  it('流式期间默认 steer 应直接发送，不受 loading 状态阻塞', () => {
+  it('初始化 loading 间隙的默认 steer 也应直接发送', () => {
     expect(resolveMessageQueueRoute({
       loading: true,
-      streamingActive: true,
-      streamingSeen: true,
+      streamingActive: false,
+      streamingSeen: false,
       behavior: 'steer',
     })).toBe('send');
   });
@@ -20,12 +20,12 @@ describe('resolveMessageQueueRoute', () => {
     })).toBe('followUpQueue');
   });
 
-  it('初始化 loading 阶段暂存消息', () => {
+  it('初始化 loading 阶段暂存 followUp', () => {
     expect(resolveMessageQueueRoute({
       loading: true,
       streamingActive: false,
       streamingSeen: false,
-      behavior: 'steer',
+      behavior: 'followUp',
     })).toBe('initialQueue');
   });
 

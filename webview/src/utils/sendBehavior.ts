@@ -2,12 +2,12 @@
  * 流式发送行为（模型对话进行中发消息）的键位配置。
  *
  * pi 支持两种发送语义：
- * - steer：打断当前输出，立即引导模型响应新指令
+ * - steer：引导当前回合，在 Pi 的工具回合边界注入新指令
  * - followUp：不打断，排队等待当前对话完成后按序执行
  *
  * 用户可在设置页配置回车/Tab 分别对应哪种语义：
  * - 'steerOnEnter'（默认，用户习惯）：回车 = 引导（steer），Tab = 后续（followUp）
- * - 'followUpOnEnter'（大家默认）：回车 = 后续（followUp），Tab = 引导（steer）
+ * - 'followUpOnEnter'：回车 = 后续（followUp），Tab = 引导（steer）
  *
  * 纯本地 UI 偏好，存 localStorage（符合"前端不持有权威数据"约定）。
  */
