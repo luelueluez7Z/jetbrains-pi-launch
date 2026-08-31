@@ -122,6 +122,11 @@
   background: var(--dropdown-hover);
 }
 
+/* Keyboard navigation highlight follows the same visual language as hover. */
+.selector-option.highlighted {
+  background: var(--dropdown-hover);
+}
+
 .selector-option.selected {
   background: var(--dropdown-selected);
 }

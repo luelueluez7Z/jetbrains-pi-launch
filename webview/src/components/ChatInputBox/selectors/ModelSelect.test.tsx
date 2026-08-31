@@ -166,4 +166,46 @@ describe('ModelSelect', () => {
     const pinnedSection = screen.getByTestId('model-section-__pinned__');
     expect(pinnedSection.textContent).toContain('deepseek/Deepseek-V4-Flash-Free');
   });
+
+  it('支持使用上下键移动高亮并按回车选择模型', () => {
+    const onChange = vi.fn();
+    render(
+      <ModelSelect
+        value="first"
+        onChange={onChange}
+        models={[{ id: 'first', label: 'First' }, { id: 'second', label: 'Second' }, { id: 'third', label: 'Third' }]}
+        currentProvider="pi"
+      />,
+    );
+
+    const button = screen.getByRole('button');
+    fireEvent.click(button);
+    fireEvent.keyDown(button, { key: 'ArrowDown' });
+    fireEvent.keyDown(button, { key: 'Enter' });
+
+    expect(onChange).toHaveBeenCalledWith('second');
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('键盘高亮模型超出列表视口时应自动滚动到可视区域', () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLDivElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    render(
+      <ModelSelect
+        value="first"
+        onChange={vi.fn()}
+        models={[{ id: 'first', label: 'First' }, { id: 'second', label: 'Second' }]}
+        currentProvider="pi"
+      />,
+    );
+
+    const button = screen.getByRole('button');
+    fireEvent.click(button);
+    fireEvent.keyDown(button, { key: 'ArrowDown' });
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+  });
 });

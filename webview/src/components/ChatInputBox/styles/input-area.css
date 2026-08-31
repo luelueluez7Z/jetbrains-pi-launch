@@ -11,6 +11,13 @@
 
 /* Pi's compact TUI-style telemetry line sits directly above the composer. */
 .pi-status-bar {
+  /* Keep telemetry colors theme-aware so light mode remains readable on white. */
+  --pi-status-accent: #c8a9ee;
+  --pi-status-disconnected: #ef6a6a;
+  --pi-status-muted: var(--text-muted);
+  --pi-status-context: #d8a382;
+  --pi-status-cache: #8fb3ef;
+  --pi-status-balance: #f0b45a;
   min-height: 32px;
   display: flex;
   align-items: center;
@@ -26,6 +33,15 @@
   overflow: hidden;
 }
 
+[data-theme="light"] .pi-status-bar {
+  --pi-status-accent: #6f42c1;
+  --pi-status-disconnected: #c62828;
+  --pi-status-muted: #606770;
+  --pi-status-context: #945d00;
+  --pi-status-cache: #2867a8;
+  --pi-status-balance: #996000;
+}
+
 .pi-status-bar-icon {
   display: inline-flex;
   align-items: center;
@@ -33,7 +49,7 @@
 }
 
 .pi-status-bar-icon.pi-status-busy {
-  color: #c8a9ee;
+  color: var(--pi-status-accent);
 }
 
 .pi-status-bar-icon.pi-status-busy svg {
@@ -41,15 +57,15 @@
 }
 
 .pi-status-bar-icon.pi-status-idle {
-  color: #c8a9ee;
+  color: var(--pi-status-accent);
 }
 
 .pi-status-bar-icon.pi-status-disconnected {
-  color: #ef6a6a;
+  color: var(--pi-status-disconnected);
 }
 
 .pi-status-bar-icon.pi-status-ready {
-  color: #c8a9ee;
+  color: var(--pi-status-accent);
 }
 
 .pi-status-bar-text {
@@ -59,35 +75,35 @@
 
 /* 状态主文本 —— 参考 codex 配色：统一淡紫（异常/断开保留红色） */
 .pi-status-phase.pi-status-phase-busy {
-  color: #c8a9ee;
+  color: var(--pi-status-accent);
 }
 .pi-status-phase.pi-status-phase-idle {
-  color: #c8a9ee;
+  color: var(--pi-status-accent);
 }
 .pi-status-phase.pi-status-phase-disconnected {
-  color: #ef6a6a;
+  color: var(--pi-status-disconnected);
 }
 .pi-status-phase.pi-status-phase-ready {
-  color: #c8a9ee;
+  color: var(--pi-status-accent);
 }
 
 /* 统计段 —— 参考 codex 配色：context 浅橙 / cache 浅蓝 / tokens 灰 */
 .pi-status-stats {
-  color: var(--text-muted);
+  color: var(--pi-status-muted);
 }
 .pi-status-context {
-  color: #d8a382;
+  color: var(--pi-status-context);
 }
 .pi-status-cache {
-  color: #8fb3ef;
+  color: var(--pi-status-cache);
 }
 .pi-status-tokens {
-  color: var(--text-muted);
+  color: var(--pi-status-muted);
 }
 
 /* 余额段 —— 金色，不加粗 */
 .pi-status-balance {
-  color: #f0b45a;
+  color: var(--pi-status-balance);
 }
 
 @keyframes pi-status-spin {

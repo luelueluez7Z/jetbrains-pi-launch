@@ -166,10 +166,13 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // 当前键盘导航高亮项；使用模型 id 而不是数组下标，避免搜索/置顶分组变化时错位。
+  const [highlightedModelId, setHighlightedModelId] = useState<string | null>(null);
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedModelIds(currentProvider));
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const modelOptionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const { positionedStyle, maxHeight, recalculate } = useDropdownPosition({
     buttonRef,
     dropdownRef,
@@ -251,8 +254,22 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
   // 搜索后回车选中的目标：sections 已按搜索词过滤且 pinned 分组在前，
   // 故第一个非空 section 的首个模型即“第一个匹配结果”（无匹配时为 undefined）。
   const firstVisibleModelId = sections.find((s) => s.models.length > 0)?.models[0]?.id;
+  const visibleModelIds = useMemo(
+    () => sections.flatMap((section) => section.models.map((model) => model.id)),
+    [sections],
+  );
   const showSearch = shouldShowModelSearch(models.length, searchQuery);
   const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
+
+  /** Move the keyboard highlight through the currently visible model options. */
+  const moveHighlightedModel = useCallback((direction: 1 | -1) => {
+    if (!visibleModelIds.length) return;
+    const fallbackIndex = currentModel ? visibleModelIds.indexOf(currentModel.id) : -1;
+    const currentIndex = highlightedModelId ? visibleModelIds.indexOf(highlightedModelId) : fallbackIndex;
+    const baseIndex = currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : visibleModelIds.length;
+    const nextIndex = (baseIndex + direction + visibleModelIds.length) % visibleModelIds.length;
+    setHighlightedModelId(visibleModelIds[nextIndex]);
+  }, [currentModel, highlightedModelId, visibleModelIds]);
 
   /**
    * Toggle dropdown
@@ -263,20 +280,49 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
     setIsOpen(nextOpen);
     if (!nextOpen) {
       setSearchQuery('');
+      setHighlightedModelId(null);
     }
     if (nextOpen) {
+      setHighlightedModelId(currentModel?.id ?? firstVisibleModelId ?? null);
       recalculate();
     }
-  }, [isOpen, recalculate]);
+  }, [currentModel, firstVisibleModelId, isOpen, recalculate]);
 
-  /**
-   * Select model
-   */
+  /** Select a model and reset transient dropdown state. */
   const handleSelect = useCallback((modelId: string) => {
     onChange(modelId);
     setIsOpen(false);
     setSearchQuery('');
+    setHighlightedModelId(null);
   }, [onChange]);
+
+  const handleButtonKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'Escape' && isOpen) {
+      e.preventDefault();
+      setIsOpen(false);
+      setSearchQuery('');
+      setHighlightedModelId(null);
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
+
+    if (e.key === 'Enter' && isOpen && highlightedModelId) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSelect(highlightedModelId);
+      return;
+    }
+    if (e.key === 'Enter' && !isOpen) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isOpen) {
+      setIsOpen(true);
+      setSearchQuery('');
+      recalculate();
+    }
+    moveHighlightedModel(e.key === 'ArrowDown' ? 1 : -1);
+  }, [handleSelect, highlightedModelId, isOpen, moveHighlightedModel, recalculate]);
 
   const handleTogglePin = useCallback((e: React.MouseEvent, modelId: string) => {
     e.stopPropagation();
@@ -299,6 +345,7 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
       ) {
         setIsOpen(false);
         setSearchQuery('');
+        setHighlightedModelId(null);
       }
     };
 
@@ -319,6 +366,13 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
     }
   }, [isOpen, filteredModels.length, pinnedIds.length, loading, recalculate]);
 
+  useEffect(() => {
+    if (!isOpen || !highlightedModelId) return;
+    // Keep keyboard navigation visible when the highlighted model moves beyond
+    // the scroll viewport of the custom dropdown list.
+    modelOptionRefs.current[highlightedModelId]?.scrollIntoView?.({ block: 'nearest' });
+  }, [highlightedModelId, isOpen]);
+
   const renderSectionLabel = (sectionId: string, sectionLabel: string): string => {
     if (sectionId === PINNED_GROUP_ID) {
       return t('models.pinned', { defaultValue: 'Pinned' });
@@ -332,6 +386,9 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
         ref={buttonRef}
         className="selector-button"
         onClick={handleToggle}
+        onKeyDown={handleButtonKeyDown}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         title={t('chat.currentModel', { model: getModelLabel(currentModel, true) })}
       >
         <ProviderModelIcon
@@ -367,11 +424,26 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
-                  // 搜索后按回车：选中第一个匹配结果（仅在有搜索词且存在匹配时）
-                  if (e.key === 'Enter' && searchQuery.trim() && firstVisibleModelId) {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setIsOpen(false);
+                    setSearchQuery('');
+                    setHighlightedModelId(null);
+                  } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                     e.preventDefault();
                     e.stopPropagation();
-                    handleSelect(firstVisibleModelId);
+                    moveHighlightedModel(e.key === 'ArrowDown' ? 1 : -1);
+                  } else if (e.key === 'Enter') {
+                    const selectedModelId = highlightedModelId && visibleModelIds.includes(highlightedModelId)
+                      ? highlightedModelId
+                      : firstVisibleModelId;
+                    if (!selectedModelId) {
+                      e.stopPropagation();
+                      return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSelect(selectedModelId);
                   } else {
                     e.stopPropagation();
                   }
@@ -418,7 +490,13 @@ export const ModelSelect = ({ value, onChange, models = AVAILABLE_MODELS, curren
                   return (
                     <div
                       key={model.id}
-                      className={`selector-option ${isSelectedModel(model.id) ? 'selected' : ''}`}
+                      ref={(element) => {
+                        modelOptionRefs.current[model.id] = element;
+                      }}
+                      className={`selector-option ${isSelectedModel(model.id) ? 'selected' : ''} ${highlightedModelId === model.id ? 'highlighted' : ''}`}
+                      role="option"
+                      aria-selected={isSelectedModel(model.id)}
+                      onMouseEnter={() => setHighlightedModelId(model.id)}
                       onClick={() => handleSelect(model.id)}
                       data-testid={`model-option-${model.id}`}
                     >
