@@ -13,8 +13,10 @@ function kindOf(text: string): StatusKind {
   return 'ready';
 }
 
-/** 余额段识别：💰 / 额度 / 余额 / 货币符号 */
-const BALANCE_RE = /💰|余额|额度|¥|\$|元/;
+/** provider-balance 扩展的余额段识别；不要包含 $，避免误匹配会话费用。 */
+const BALANCE_RE = /💰|余额|额度|¥|元/;
+/** pi 会话费用段（formatPiStatus 当前输出为 "$0.142"）。 */
+const COST_RE = /^\s*\$\s*\d+(?:\.\d+)?\s*$/;
 
 /** 统计段细分：context（上下文占用）/ cache / tokens —— 仅颜色区分，无 emoji */
 interface StatsPart {
@@ -23,10 +25,13 @@ interface StatsPart {
 }
 
 function classifyStats(part: string): StatsPart {
+  if (COST_RE.test(part)) return { text: part, cls: 'pi-status-cost' };
+  if (BALANCE_RE.test(part)) return { text: part.replace(/💰/g, '').trim(), cls: 'pi-status-balance' };
   if (/cache/i.test(part)) return { text: part, cls: 'pi-status-cache' };
   if (/[↑↓]/.test(part)) return { text: part, cls: 'pi-status-tokens' };
   // 上下文占用：197.5K/400.0K (49%)、12.3K/200K (6%)、0/200.0K (0%) —— 数字可选小数，可带 K/k 单位
   if (/\d+(?:\.\d+)?[Kk]?\s*\/\s*\d+(?:\.\d+)?[Kk]?/.test(part)) return { text: part, cls: 'pi-status-context' };
+  if (/^(?:plan|计划)\b/i.test(part.trim())) return { text: part, cls: 'pi-status-plan' };
   return { text: part };
 }
 
@@ -39,9 +44,8 @@ export function PiStatusBar({ status }: PiStatusBarProps) {
 
   const parts = raw.split(' · ').filter(Boolean);
   const [phase, ...rest] = parts;
-  const balanceIdx = rest.findIndex((s) => BALANCE_RE.test(s));
-  const balance = balanceIdx >= 0 ? rest[balanceIdx].replace(/💰/g, '').trim() : null;
-  const stats = (balanceIdx >= 0 ? rest.filter((_, i) => i !== balanceIdx) : rest).map(classifyStats);
+  // 保持后端状态字符串中每个 "·" 分隔段的原始顺序，逐段着色。
+  const stats = rest.map(classifyStats);
 
   return (
     <div className="pi-status-bar" role="status" aria-live="polite" title={raw}>
@@ -57,9 +61,6 @@ export function PiStatusBar({ status }: PiStatusBarProps) {
           {s.text}
         </span>
       ))}
-      {balance && (
-        <span className="pi-status-bar-text pi-status-balance"> · {balance}</span>
-      )}
     </div>
   );
 }

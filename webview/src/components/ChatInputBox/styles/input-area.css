@@ -17,7 +17,10 @@
   --pi-status-muted: var(--text-muted);
   --pi-status-context: #d8a382;
   --pi-status-cache: #8fb3ef;
+  --pi-status-tokens: #8fc9a0;
+  --pi-status-cost: #e69aaf;
   --pi-status-balance: #f0b45a;
+  --pi-status-plan: #65c7c0;
   min-height: 32px;
   display: flex;
   align-items: center;
@@ -39,7 +42,10 @@
   --pi-status-muted: #606770;
   --pi-status-context: #945d00;
   --pi-status-cache: #2867a8;
+  --pi-status-tokens: #3f7f4f;
+  --pi-status-cost: #b23a5a;
   --pi-status-balance: #996000;
+  --pi-status-plan: #007f7a;
 }
 
 .pi-status-bar-icon {
@@ -98,12 +104,20 @@
   color: var(--pi-status-cache);
 }
 .pi-status-tokens {
-  color: var(--pi-status-muted);
+  color: var(--pi-status-tokens);
+}
+.pi-status-cost {
+  color: var(--pi-status-cost);
 }
 
 /* 余额段 —— 金色，不加粗 */
 .pi-status-balance {
   color: var(--pi-status-balance);
+}
+
+/* Plan 状态段 —— 青绿色 */
+.pi-status-plan {
+  color: var(--pi-status-plan);
 }
 
 @keyframes pi-status-spin {

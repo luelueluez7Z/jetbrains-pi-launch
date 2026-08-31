@@ -29,6 +29,7 @@ import {
   type SendBehavior,
   type SendBehaviorMode,
 } from './utils/sendBehavior';
+import { resolveMessageQueueRoute } from './utils/messageQueueRouting';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
@@ -364,13 +365,19 @@ const App = () => {
       // /plan：作为普通命令发送给 pi（pi-plan-mode 扩展处理），不前端拦截
       // /context - handled locally even while loading
     }
-    // If loading, add to queue
-    if (loading) {
+    const route = resolveMessageQueueRoute({
+      loading,
+      streamingActive,
+      streamingSeen: streamingSeenRef.current,
+      behavior,
+    });
+    // 初始化尚未完成时暂存消息，等待初始化结束后执行
+    if (route === 'initialQueue') {
       enqueueMessage(content, attachments);
       return;
     }
     // 模型对话进行中 + followUp：进本地队列排队，等当前对话完成后自动执行
-    if (streamingActive && behavior === 'followUp') {
+    if (route === 'followUpQueue') {
       enqueueMessage(content, attachments);
       return;
     }

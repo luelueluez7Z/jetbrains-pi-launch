@@ -81,15 +81,14 @@ class IdeIntegrator(
         val newContent = params.str("newContent")
         val title = params.str("title")
 
-        // 路径安全校验：仅允许项目内文件（防止前端传任意路径）
+        // 路径安全校验：先解析相对项目根的路径，再用规范化路径限制在项目内。
         val basePath = project.basePath
         if (basePath == null) {
             LOG.warn("[PiChatDiag] show_diff 拒绝：项目无 basePath")
             return
         }
-        val normalizedPath = filePath.replace('\\', '/')
-        val normalizedBase = basePath.replace('\\', '/').trimEnd('/')
-        if (!normalizedPath.startsWith(normalizedBase, ignoreCase = true)) {
+        val resolvedPath = resolveProjectPathWithinBase(filePath, basePath)
+        if (resolvedPath == null) {
             LOG.warn("[PiChatDiag] show_diff 拒绝项目外路径: " + filePath)
             onErrorToast("无法显示 Diff（文件不在项目中）：" + filePath)
             return
@@ -98,7 +97,7 @@ class IdeIntegrator(
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             try {
-                val fileName = filePath.substringAfterLast('/').substringAfterLast('\\')
+                val fileName = resolvedPath.name
                 val fileType = com.intellij.openapi.fileTypes.FileTypeManager.getInstance().getFileTypeByFileName(fileName)
                 val left = DiffContentFactory.getInstance().create(project, oldContent, fileType)
                 val right = DiffContentFactory.getInstance().create(project, newContent, fileType)
@@ -166,4 +165,18 @@ class IdeIntegrator(
         editor.scrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
         editor.contentComponent.requestFocus()
     }
+}
+
+/**
+ * 将 Diff 路径解析为项目内规范路径。
+ *
+ * 工具调用通常传相对项目根的路径（例如 doc/investigation/a.md），而安全校验
+ * 必须在解析后进行；同时使用 Path.startsWith 避免 /project 与 /project-other
+ * 这类字符串前缀误判，并拒绝 .. 穿越项目边界的路径。
+ */
+internal fun resolveProjectPathWithinBase(rawPath: String, basePath: String): File? {
+    val base = runCatching { File(basePath).canonicalFile }.getOrNull() ?: return null
+    val candidate = if (File(rawPath).isAbsolute) File(rawPath) else File(base, rawPath)
+    val canonical = runCatching { candidate.canonicalFile }.getOrNull() ?: return null
+    return if (canonical.toPath().startsWith(base.toPath())) canonical else null
 }

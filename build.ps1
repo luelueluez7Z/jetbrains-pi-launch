@@ -1,6 +1,6 @@
 <#
     一键打包 pichat 插件：先递增补丁版本，再构建 webview 前端（npm run build），
-    最后打包后端插件。
+    最后使用非 daemon 模式打包后端插件。
 
     用法:
       .\build.ps1           # 全量打包（clean buildPlugin，前端/后端改动都适用，推荐）
@@ -57,7 +57,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "npm run build 失败 (exit=$LASTEXITCODE)" }
 } finally { Pop-Location }
 
-[string[]]$gradleArgs = if ($NoClean) { @('buildPlugin') } else { @('clean', 'buildPlugin') }
+[string[]]$gradleTasks = if ($NoClean) { @('buildPlugin') } else { @('clean', 'buildPlugin') }
+# 打包使用 --no-daemon，避免构建完成后留下长期驻留的 Gradle daemon。
+[string[]]$gradleArgs = @('--no-daemon') + $gradleTasks
 Write-Host "[2/2] 打包后端插件 (gradlew $($gradleArgs -join ' '))..." -ForegroundColor Cyan
 Push-Location $root
 try {
