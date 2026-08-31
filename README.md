@@ -70,6 +70,7 @@ npm run build          # emits webview/dist, copied into resources/web/index.htm
 ```
 
 The webview is a single-file bundle embedded in the plugin; after changing frontend code, rebuild it, then `buildPlugin`, then restart the sandbox. `build.ps1` chains both steps so a frontend-only change is never shipped stale.
+每次执行 `build.ps1` 都会自动递增 `plugin.xml` 的补丁版本号；如果只直接执行 Gradle 任务，则不会自动递增版本。
 
 ### Project layout
 
