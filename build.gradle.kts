@@ -34,6 +34,7 @@ dependencies {
         // optional platform module and must be present on the compile classpath.
         bundledPlugin("com.intellij.modules.jcef")
     }
+    testImplementation(kotlin("test"))
 }
 
 java {
@@ -58,4 +59,8 @@ intellijPlatform {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release.set(25)
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

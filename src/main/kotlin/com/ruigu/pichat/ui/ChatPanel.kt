@@ -52,6 +52,7 @@ import java.nio.file.StandardOpenOption
 import java.time.Instant
 import java.util.Comparator
 import java.util.IdentityHashMap
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.awt.BorderLayout
 import java.io.File
@@ -96,6 +97,16 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
 
     private val models = mutableListOf<ModelItem>()
     private var currentModel: ModelItem? = null
+    /** Pi's session model scope, resolved from global/project enabledModels settings. */
+    private val modelScopePatterns: List<String>? by lazy {
+        val agentDir = System.getenv("PI_CODING_AGENT_DIR")
+            ?.takeIf { it.isNotBlank() }
+            ?.let(Path::of)
+            ?: Path.of(System.getProperty("user.home"), ".pi", "agent")
+        val global = agentDir.resolve("settings.json")
+        val projectSettings = project.basePath?.let { Path.of(it).resolve(".pi").resolve("settings.json") }
+        PiModelScope.loadPatterns(global, projectSettings)
+    }
     private val thinkingLevels = mutableListOf<String>()
     private var currentThinking: String? = null
     private val sessions = mutableListOf<SessionItem>()
@@ -525,6 +536,13 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
     private val fileCacheLock = Any()
     private val fileListCache = ArrayList<FileEntry>()
 
+    /**
+     * Pi 的内置 @ 补全通过 fd 扫描文件。插件优先复用 Pi 管理目录中的 fd，
+     * 找不到时再尝试系统 PATH；fd 启动失败后回退到原有 Kotlin 扫描实现。
+     */
+    private val fdExecutable: String? by lazy { resolveFdExecutable() }
+    @Volatile private var fdDisabled = false
+
     @Volatile private var fileListCacheKey: String? = null
     @Volatile private var fileListCacheTime = 0L
 
@@ -586,6 +604,96 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         return FileEntry(name, rel, p.toString(), if (isDir) "directory" else "file", ext)
     }
 
+    /** 定位 Pi 管理的 fd 或系统 PATH 中的 fd 命令名。 */
+    private fun resolveFdExecutable(): String? {
+        val isWindows = System.getProperty("os.name").lowercase(Locale.ROOT).contains("win")
+        val executableName = if (isWindows) "fd.exe" else "fd"
+        val agentDir = System.getenv("PI_CODING_AGENT_DIR")
+            ?.takeIf { it.isNotBlank() }
+            ?.let(Path::of)
+            ?: Path.of(System.getProperty("user.home"), ".pi", "agent")
+        val managed = agentDir.resolve("bin").resolve(executableName)
+        if (Files.isRegularFile(managed)) return managed.toString()
+
+        // ProcessBuilder resolves bare names through PATH, so do not invoke a shell here.
+        return if (isWindows) "fd.exe" else "fd"
+    }
+
+    /**
+     * 使用 Pi 内置 autocomplete 相同的 fd 参数搜索文件。
+     * 返回 null 表示 fd 不可用/执行失败，调用方应回退旧扫描；空列表表示确实没有匹配项。
+     */
+    private fun searchFilesWithFd(root: Path, currentPath: String, query: String): List<FileEntry>? {
+        if (fdDisabled) return null
+        val executable = fdExecutable ?: return null
+        val relativeCurrent = currentPath.trim('/').replace('\\', '/').trim('/')
+        val searchRoot = if (relativeCurrent.isEmpty()) root else root.resolve(relativeCurrent).normalize()
+        if (!searchRoot.startsWith(root) || !Files.isDirectory(searchRoot)) return emptyList()
+
+        val args = mutableListOf(
+            "--base-directory", searchRoot.toString(),
+            "--max-results", "100",
+            "--type", "f",
+            "--type", "d",
+            "--follow",
+            "--hidden",
+            "--exclude", ".git",
+            "--exclude", ".git/*",
+            "--exclude", ".git/**",
+        )
+        if (query.isNotBlank()) {
+            // 查询词来自 JSON，不经过 shell；-- 还可避免以 - 开头的输入被当成 fd 选项。
+            args += "--"
+            args += query
+        }
+
+        val process = try {
+            ProcessBuilder(listOf(executable) + args)
+                .redirectErrorStream(true)
+                .start()
+        } catch (e: Exception) {
+            fdDisabled = true
+            LOG.warn("[PiChatDiag] fd unavailable; falling back to local file scan", e)
+            return null
+        }
+
+        val lines = try {
+            process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readLines() }
+        } catch (e: Exception) {
+            LOG.warn("[PiChatDiag] failed to read fd output; falling back to local file scan", e)
+            return null
+        }
+        val exitCode = try {
+            process.waitFor()
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return null
+        }
+        // fd uses exit code 1 for a valid search with no matches. Any higher
+        // exit code is an invocation/error message (stderr is merged above),
+        // so never expose that text as a fake file path.
+        if (exitCode > 1) {
+            LOG.warn("[PiChatDiag] fd exited with code $exitCode; falling back to local file scan")
+            return null
+        }
+
+        val prefix = if (relativeCurrent.isEmpty()) "" else "$relativeCurrent/"
+        return lines.mapNotNull { raw ->
+            val display = raw.trim().replace('\\', '/')
+            if (display.isEmpty()) return@mapNotNull null
+            val isDirectory = display.endsWith('/')
+            val clean = display.trimEnd('/')
+            if (clean.isEmpty()) return@mapNotNull null
+            val rel = (prefix + clean).replace("//", "/")
+            val absolute = root.resolve(rel).normalize()
+            if (!absolute.startsWith(root)) return@mapNotNull null
+            val name = absolute.fileName?.toString() ?: return@mapNotNull null
+            val directory = isDirectory || Files.isDirectory(absolute)
+            val ext = if (directory) "" else name.substringAfterLast('.', "").takeIf { it != name } ?: ""
+            FileEntry(name, rel, absolute.toString(), if (directory) "directory" else "file", ext)
+        }
+    }
+
     /**
      * 响应前端 @ 引用的 list_files 请求。按 currentPath 过滤项目文件树，
      * 带 requestId 回传（前端据此丢弃过期响应）。扫描在后台线程执行。
@@ -605,24 +713,25 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
         val base = Path.of(basePath).normalize()
         if (!Files.isDirectory(base)) return
 
+        val start = if (currentPath.isEmpty()) base else base.resolve(currentPath).normalize()
+        if (!start.startsWith(base) || !Files.isDirectory(start)) return
+
         ApplicationManager.getApplication().executeOnPooledThread {
-            val entries = scanProjectFiles(base)
-            val start = if (currentPath.isEmpty()) base else base.resolve(currentPath).normalize()
-            val inRange = start.startsWith(base) && Files.isDirectory(start)
-            val rows = JsonArray()
-            if (inRange) {
-                for (e in entries) {
-                    val abs = Path.of(e.abs).normalize()
-                    if (abs.startsWith(start) && abs != start) {
-                        rows.add(JsonObject().apply {
-                            addProperty("name", e.name)
-                            addProperty("path", e.relPath)
-                            addProperty("absolutePath", e.abs)
-                            addProperty("type", e.type)
-                            if (e.ext.isNotEmpty()) addProperty("extension", e.ext)
-                        })
-                    }
+            // fd 输出已经按 currentPath 限定；仅 fd 不可用时回退旧的全量扫描。
+            val entries = searchFilesWithFd(base, currentPath, req.str("query").trim())
+                ?: scanProjectFiles(base).filter { entry ->
+                    val abs = Path.of(entry.abs).normalize()
+                    abs.startsWith(start) && abs != start
                 }
+            val rows = JsonArray()
+            for (e in entries) {
+                rows.add(JsonObject().apply {
+                    addProperty("name", e.name)
+                    addProperty("path", e.relPath)
+                    addProperty("absolutePath", e.abs)
+                    addProperty("type", e.type)
+                    if (e.ext.isNotEmpty()) addProperty("extension", e.ext)
+                })
             }
             val result = JsonObject().apply {
                 add("files", rows)
@@ -1069,7 +1178,7 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                     return@onEdt
                 }
                 val arr = res.data().getAsJsonArray("models")
-                LOG.info("[PiChatDiag] get_available_models OK, count=" + arr.size())
+                LOG.info("[PiChatDiag] get_available_models OK, count=" + arr.size() + ", scope=" + modelScopePatterns)
                 val list = mutableListOf<ModelItem>()
                 for (el in arr) {
                     if (!el.isJsonObject) continue
@@ -1081,11 +1190,18 @@ class ChatPanel(private val project: Project) : Disposable, PiListener {
                         runCatching { m.get("contextWindow").asLong }.getOrDefault(0L) else 0L
                     list.add(ModelItem(provider, id, name, contextWindow))
                 }
+                val allowedKeys = PiModelScope.resolveAllowedKeys(
+                    list.map { PiModelScope.ModelRef(it.provider, it.id) },
+                    modelScopePatterns,
+                )
+                val byKey = list.associateBy { "${it.provider}\u0000${it.id}" }
+                val scopedList = allowedKeys.mapNotNull { byKey[it] }
+                LOG.info("[PiChatDiag] model scope applied: available=" + list.size + ", selectable=" + scopedList.size)
                 models.clear()
-                models.addAll(list)
+                models.addAll(scopedList)
                 // 选中当前模型
-                val cur = list.firstOrNull { it.provider == currentProvider && it.id == currentId }
-                currentModel = cur ?: list.firstOrNull()
+                val cur = scopedList.firstOrNull { it.provider == currentProvider && it.id == currentId }
+                currentModel = cur ?: scopedList.firstOrNull()
                 publishWebState()
                 // Replace the web UI's static fallback catalog with Pi's live
                 // get_available_models snapshot once the RPC response arrives.
